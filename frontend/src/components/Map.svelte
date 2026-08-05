@@ -71,10 +71,8 @@ frontend/my-vietnam-map/src/components/Map.svelte
     // Khởi tạo bản đồ tại toạ độ Việt Nam (Đà Nẵng làm trung tâm)
     map = L.map(mapElement).setView([16.047079, 108.206230], 6);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-      subdomains: 'abcd',
-      maxZoom: 20
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
     markerGroup = L.layerGroup().addTo(map);
