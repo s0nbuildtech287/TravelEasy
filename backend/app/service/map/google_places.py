@@ -31,8 +31,10 @@ async def search_nearby_places(lat: float, lng: float, radius: int = 1000, place
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url, params=params)
-            response.raise_for_status()
             data = response.json()
+            status = data.get("status")
+            if status != "OK" and status != "ZERO_RESULTS":
+                print(f"[WARN] Google Places Nearby Search status: {status}. Message: {data.get('error_message')}")
 
             raw_results = data.get("results", [])
             places = []
@@ -120,8 +122,10 @@ async def search_text_places(query: str):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url, params=params)
-            response.raise_for_status()
             data = response.json()
+            status = data.get("status")
+            if status != "OK" and status != "ZERO_RESULTS":
+                print(f"[WARN] Google Places Text Search status: {status}. Message: {data.get('error_message')}")
 
             raw_results = data.get("results", [])
             places = []
