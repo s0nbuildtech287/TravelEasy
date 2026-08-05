@@ -1,52 +1,28 @@
 # backend/app/api/rag_itinerary_module.py
 
 from typing import List, Dict, Any
-from app.rag_module.rag_pipeline import RAGPipeline
-from app.service.tourism.tourism_module import TOURISM_PLACES
-import threading
 
-_PIPELINE = {"instance": None, "lock": threading.Lock()}
-
-
-def get_pipeline():
-    if _PIPELINE["instance"] is None:
-        with _PIPELINE["lock"]:
-            _PIPELINE["instance"] = RAGPipeline(
-                engine=None,
-                persist_path="app/rag_store"
-            )
-            if not _PIPELINE["instance"].is_built:
-                records = []
-                for p in TOURISM_PLACES:
-                    records.append({
-                        "id": f"tourism_places:{p['id']}",
-                        "record": p
-                    })
-                _PIPELINE["instance"].build_from_records(records)
-    return _PIPELINE["instance"]
-
-
-def generate_static_fallback_itinerary(places, days):
-    selected = places[: days * 4]
+def generate_static_fallback_itinerary(places, days, province):
+    selected = places[: days * 3]
     itinerary_lines = []
 
     for d in range(1, days + 1):
-        itinerary_lines.append(f"Ngày {d}:")
-        idx = (d - 1) * 4
+        itinerary_lines.append(f"### Ngày {d}: Khám phá {province}")
+        idx = (d - 1) * 3
 
         if idx < len(selected):
             p = selected[idx]
-            itinerary_lines.append(f"- Sáng: Tham quan {p['name']}. Hoạt động: {', '.join(p.get('activities', []))}.")
-            itinerary_lines.append(f"  Ghi chú: {p.get('weather_notes', 'Nên đi giày thể thao')}.")
+            itinerary_lines.append(f"*   **Sáng**: Tham quan **{p['name']}** (Địa chỉ: {p['address']}).")
+            itinerary_lines.append(f"    *   *Ăn trưa*: Gợi ý thưởng thức đặc sản ẩm thực gần khu vực {p['name']}.")
 
         if idx + 1 < len(selected):
             p = selected[idx + 1]
-            itinerary_lines.append(f"- Chiều: Khám phá {p['name']}. Nổi bật: {', '.join(p.get('highlights', []))}.")
-
+            itinerary_lines.append(f"*   **Chiều**: Khám phá địa điểm nổi tiếng **{p['name']}**.")
+            
         if idx + 2 < len(selected):
             p = selected[idx + 2]
-            itinerary_lines.append(f"- Tối: Dạo chơi {p['name']}. Thời gian gợi ý: {p.get('duration_recommend', '1-2 giờ')}.")
-            itinerary_lines.append(f"  Gợi ý ăn uống: Thưởng thức đặc sản vùng gần {p['name']}.")
+            itinerary_lines.append(f"*   **Tối**: Dạo chơi khu vực **{p['name']}** và thư giãn.")
+            itinerary_lines.append(f"    *   *Ăn tối*: Trải nghiệm các quán ăn/nhà hàng ngon gần đó.")
 
         itinerary_lines.append("")
 
@@ -59,72 +35,53 @@ def generate_itinerary_rag(
     preferences: Dict,
     places: List[Dict[str, Any]]
 ):
-
-    pipeline = get_pipeline()
-
-    query = f"""
-    Tạo lịch trình du lịch {days} ngày tại {province}.
-    Ưu tiên loại hình: {preferences.get('interests')}.
-    Nhịp độ: {preferences.get('pace')}.
-    Nhóm khách: {preferences.get('group_type')}.
-    Tránh: {preferences.get('avoid_categories')}.
     """
-
-    # Tìm kiếm các tài liệu RAG liên quan
-    contexts = pipeline.search(query=query, top_k=10)
-
-    # Lập Prompt gửi sang Gemini để tạo lịch trình sinh động
+    Sinh lịch trình du lịch thông minh bằng cách gửi danh sách điểm du lịch thực tế
+    và tùy chọn của người dùng sang Gemini API để viết lịch trình chi tiết.
+    """
+    # Xây dựng danh sách địa điểm thực tế
     places_str = ""
-    for p in places[: days * 4]:
+    for idx, p in enumerate(places[:days*4]):
         places_str += f"- {p['name']}: {p.get('description', '')} (Địa chỉ: {p.get('address', '')})\n"
 
-    context_str = ""
-    for idx, ctx in enumerate(contexts):
-        context_str += f"Tài liệu {idx+1}: {ctx['text']}\n"
-
     prompt = f"""
-Hãy đóng vai trò là một hướng dẫn viên du lịch chuyên nghiệp tại Việt Nam.
-Nhiệm vụ của bạn là lập kế hoạch du lịch chi tiết {days} ngày tại {province} dựa trên các thông tin sau:
+Hãy đóng vai trò là một chuyên gia lập kế hoạch du lịch chuyên nghiệp tại Việt Nam.
+Nhiệm vụ của bạn là thiết kế một lịch trình du lịch chi tiết {days} ngày tại {province} bằng tiếng Việt.
 
-1. Danh sách địa điểm tham quan được chọn:
+Dưới đây là danh sách các địa điểm tham quan thực tế (lấy từ Google Maps) tại khu vực này để bạn sắp xếp vào lịch trình:
 {places_str}
 
-2. Ngữ cảnh du lịch bổ sung (RAG Context):
-{context_str}
-
-3. Sở thích và yêu cầu của du khách:
+Sở thích và yêu cầu của khách hàng:
 - Loại hình yêu thích: {preferences.get('interests', [])}
 - Nhịp độ chuyến đi: {preferences.get('pace', 'Vừa phải')}
 - Đối tượng đi cùng: {preferences.get('group_type', 'Gia đình')}
-- Các loại hình cần tránh: {preferences.get('avoid_categories', [])}
+- Các điểm/loại hình cần tránh: {preferences.get('avoid_categories', [])}
 
-Yêu cầu về lịch trình:
-- Phân chia cụ thể từng ngày thành các buổi: Sáng, Trưa, Chiều, Tối.
-- Tại mỗi điểm tham quan, mô tả hoạt động chính và thời gian gợi ý.
-- Đặc biệt quan trọng: Hãy đề xuất cụ thể tên một vài quán ăn ngon, quán cafe nổi tiếng (hoặc đặc sản cụ thể có địa điểm ăn gợi ý) thực tế ở gần khu vực địa điểm du lịch đó để du khách dừng chân nghỉ ngơi/ăn uống cho buổi Trưa và buổi Tối.
-- Sắp xếp lộ trình di chuyển khoa học, các điểm trong cùng một ngày nên gần nhau về mặt địa lý để tối ưu di chuyển.
-
-Định dạng đầu ra:
-Trả về lịch trình rõ ràng bằng tiếng Việt dưới định dạng Markdown, viết chi tiết và hấp dẫn. Sử dụng các thẻ tiêu đề như 'Ngày 1:', 'Ngày 2:'. Không thêm lời chào hay giải thích bên lề.
+Yêu cầu chi tiết về lịch trình:
+1. Phân chia rõ ràng từng ngày: Sáng, Trưa, Chiều, Tối.
+2. Sắp xếp lộ trình khoa học: Các địa điểm tham quan trong cùng một ngày phải gần nhau về mặt địa lý để tiện di chuyển.
+3. Ăn uống: Gợi ý cụ thể tên các món ăn đặc sản vùng miền nổi tiếng và đề xuất 1-2 nhà hàng, quán ăn, quán cafe ngon có thật ở gần khu vực điểm du lịch của buổi trưa/buổi tối ngày hôm đó.
+4. Trình bày dưới định dạng Markdown chuyên nghiệp, hấp dẫn, dễ đọc (sử dụng các thẻ tiêu đề như '### Ngày 1:', '### Ngày 2:', gạch đầu dòng, chữ in đậm).
+5. Không thêm lời chào, lời mở đầu hoặc kết luận dài dòng. Đi thẳng vào lịch trình.
 """
 
     itinerary_text = ""
     try:
         from app.api.llm_module import generate_itinerary_sync
-        print("[AI] Sending prompt to Gemini for itinerary generation...")
+        print(f"[AI] Generating {days}-day itinerary for {province} using Gemini...")
         itinerary_text = generate_itinerary_sync(prompt)
 
-        # Nếu lỗi API hoặc key không hợp lệ, dùng fallback tĩnh
+        # Kiểm tra nếu kết quả trả về bị lỗi
         if "ERROR:" in itinerary_text or "GEN_ERROR:" in itinerary_text or "WriterModel_Not_Initialized" in itinerary_text:
-            print(f"[WARN] Gemini failed to generate, using static fallback. Reason: {itinerary_text}")
-            itinerary_text = generate_static_fallback_itinerary(places, days)
+            print(f"[WARN] Gemini failed to generate itinerary, falling back to static generation. Reason: {itinerary_text}")
+            itinerary_text = generate_static_fallback_itinerary(places, days, province)
     except Exception as e:
-        print(f"[ERROR] Failed to call Gemini, using static fallback: {e}")
-        itinerary_text = generate_static_fallback_itinerary(places, days)
+        print(f"[ERROR] Exception calling Gemini: {e}")
+        itinerary_text = generate_static_fallback_itinerary(places, days, province)
 
     return {
         "province": province,
         "days": days,
         "itinerary": itinerary_text,
-        "rag_contexts_used": contexts
+        "rag_contexts_used": []  # Đã gỡ bỏ RAG tĩnh
     }

@@ -1,6 +1,6 @@
 // frontend/my-vietnam-map/src/api/food.js
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = "/api";
 export async function getFoodsByProvinceAndTag(province, tag) {
   try {
     console.log(`[FOOD API] Fetching foods for: province="${province}", tag="${tag}"`);

@@ -26,19 +26,17 @@ def api_get_categories(province: str):
 
 
 @router.get("/places")
-def api_get_places(
+async def api_get_places(
     province: str,
     subcategories: Optional[list[str]] = Query(None)  
 ):
     """
-    Ví dụ gọi API:
-    /tourism/places?province=An%20Giang&subcategories=Chùa&subcategories=Di%20tích
+    Tìm kiếm địa điểm du lịch động theo tỉnh và tiểu mục.
     """
     if not subcategories:
-        # Nếu không có subcategories, lấy tất cả địa điểm
-        results = get_places_by_subcategories(province, [])
+        results = await get_places_by_subcategories(province, [])
     else:
-        results = get_places_by_subcategories(province, subcategories)
+        results = await get_places_by_subcategories(province, subcategories)
     
     return {
         "province": province,

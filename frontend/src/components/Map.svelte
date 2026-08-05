@@ -221,16 +221,13 @@ frontend/my-vietnam-map/src/components/Map.svelte
 <style>
   .map-wrapper {
     width: 100%;
-    border-radius: 16px;
-    overflow: hidden;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.08);
-    border: 1px solid rgba(0,0,0,0.05);
-    background: #f8f9fa;
+    height: 100%;
+    background: #0f172a;
   }
 
   .leaflet-map-container {
     width: 100%;
-    height: 550px;
+    height: 100%;
     z-index: 1;
   }
 

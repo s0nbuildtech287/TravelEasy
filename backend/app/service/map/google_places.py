@@ -95,3 +95,58 @@ async def geocode_address(address: str):
     except Exception as e:
         print(f"[ERROR] Geocoding thất bại: {e}")
     return None
+
+
+async def search_text_places(query: str):
+    """
+    Tìm kiếm địa điểm bằng chữ (Text Search API).
+    """
+    # Dynamic reload in case .env was updated
+    api_key = os.getenv("GOOGLE_PLACES_API_KEY")
+    if not api_key or api_key == "YOUR_GOOGLE_PLACES_API_KEY_HERE":
+        print("[WARN] GOOGLE_PLACES_API_KEY chưa được cấu hình. Trả về rỗng.")
+        return {"results": []}
+
+    url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+    params = {
+        "query": query,
+        "key": api_key,
+        "language": "vi"
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            raw_results = data.get("results", [])
+            places = []
+            for item in raw_results:
+                lat_p = item.get("geometry", {}).get("location", {}).get("lat")
+                lng_p = item.get("geometry", {}).get("location", {}).get("lng")
+                google_maps_link = f"https://www.google.com/maps?q={lat_p},{lng_p}" if lat_p and lng_p else ""
+
+                image_url = None
+                photos = item.get("photos", [])
+                if photos:
+                    photo_ref = photos[0].get("photo_reference")
+                    if photo_ref:
+                        image_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference={photo_ref}&key={api_key}"
+
+                places.append({
+                    "id": item.get("place_id"),
+                    "name": item.get("name"),
+                    "latitude": lat_p,
+                    "longitude": lng_p,
+                    "address": item.get("formatted_address", "Không rõ địa chỉ"),
+                    "rating": item.get("rating", 0.0),
+                    "review_count": item.get("user_ratings_total", 0),
+                    "image_url": image_url,
+                    "google_maps_link": google_maps_link,
+                    "types": item.get("types", [])
+                })
+            return {"results": places}
+    except Exception as e:
+        print(f"[ERROR] Text search thất bại: {e}")
+        return {"results": []}

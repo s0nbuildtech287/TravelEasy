@@ -1,6 +1,6 @@
 // frontend/my-vietnam-map/src/api/itinerary.js
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = '/api';
 
 /**
  * Gửi yêu cầu tạo lịch trình tới backend

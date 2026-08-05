@@ -1,5 +1,5 @@
 // frontend/my-vietnam-map/src/api/tourism.js
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "/api";
 
 export async function getProvinces() {
     try {

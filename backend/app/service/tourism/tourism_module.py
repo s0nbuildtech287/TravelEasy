@@ -1,79 +1,75 @@
 # backend/app/service/tourism/tourism_module.py
 import os
-import json
+from typing import List, Dict, Any
 
-DATA_PATH = os.path.join(
-    os.path.dirname(__file__),
-    "..", "..", "..", "..", "data", "vietnam_tourism.jsonl"
-)
-DATA_PATH = os.path.abspath(DATA_PATH)
-
-
-def load_tourism_places():
-    places = []
-    if os.path.exists(DATA_PATH):
-        with open(DATA_PATH, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    try:
-                        places.append(json.loads(line))
-                    except Exception as e:
-                        print(f"Error loading line: {e}")
-    else:
-        print(f"[WARN] File not found: {DATA_PATH}")
-    return places
+POPULAR_PROVINCES = [
+    "Hà Giang", "Hà Nội", "Đà Nẵng", "Sapa", "Hạ Long", "Ninh Bình", 
+    "Huế", "Hội An", "Nha Trang", "Đà Lạt", "Mũi Né", "Phú Quốc", "Hồ Chí Minh"
+]
 
 
-TOURISM_PLACES = load_tourism_places()
+def get_all_provinces() -> List[str]:
+    """
+    Trả về danh sách các tỉnh thành phổ biến của Việt Nam.
+    """
+    return POPULAR_PROVINCES
 
 
-def get_all_provinces():
-    provinces = sorted(list({p["province"] for p in TOURISM_PLACES if p.get("province")}))
-    return provinces
-
-
-def get_category_tree_by_province(province: str):
-    category_map = {}
-    for p in TOURISM_PLACES:
-        if p.get("province") == province:
-            cat = p.get("category")
-            if not cat:
-                continue
-            if cat not in category_map:
-                category_map[cat] = set()
-
-            subcats = p.get("sub_category") or []
-            if isinstance(subcats, list):
-                for s in subcats:
-                    if s:
-                        category_map[cat].add(s)
-            elif isinstance(subcats, str) and subcats.strip():
-                category_map[cat].add(subcats.strip())
-
+def get_category_tree_by_province(province: str) -> Dict[str, List[str]]:
+    """
+    Trả về cây danh mục mặc định để lọc trên UI.
+    """
     return {
-        category: sorted(list(subs))
-        for category, subs in category_map.items()
+        "Tham Quan": ["Danh lam thắng cảnh", "Di tích lịch sử", "Chùa", "Khu du lịch sinh thái", "Bảo tàng"],
+        "Ẩm Thực": ["Nhà hàng", "Quán cafe ngon", "Quán ăn đặc sản"],
+        "Lưu Trú": ["Khách sạn", "Homestay đẹp", "Resort"]
     }
 
 
-def get_places_by_subcategories(province: str, selected_subcats: list[str]):
-    rows = [p for p in TOURISM_PLACES if p.get("province") == province]
+async def get_places_by_subcategories(province: str, selected_subcats: List[str]) -> List[Dict[str, Any]]:
+    """
+    Tìm kiếm địa điểm du lịch động qua Google Places Text Search.
+    """
+    from app.service.map.google_places import search_text_places
 
-    # Try case-insensitive search if exact search returns nothing
-    if not rows:
-        rows = [p for p in TOURISM_PLACES if p.get("province") and p["province"].lower() == province.lower()]
-
-    if not selected_subcats:
-        matched_places = rows
+    # Tạo truy vấn tìm kiếm dựa trên danh mục được chọn
+    if selected_subcats:
+        query = f"{selected_subcats[0]} tại {province}"
     else:
-        matched_places = []
-        for place in rows:
-            subcat_field = place.get("sub_category") or []
-            if isinstance(subcat_field, list):
-                if any(sc in subcat_field for sc in selected_subcats):
-                    matched_places.append(place)
-            elif isinstance(subcat_field, str):
-                if subcat_field in selected_subcats:
-                    matched_places.append(place)
+        query = f"Địa điểm du lịch nổi tiếng tại {province}"
 
-    return matched_places
+    print(f"[Google Places] Querying: '{query}'")
+    res = await search_text_places(query)
+    raw_results = res.get("results", [])
+
+    places = []
+    for item in raw_results:
+        # Gán danh mục
+        category = "Tham Quan"
+        if selected_subcats:
+            sub_category = selected_subcats
+            # Nhận dạng loại địa điểm
+            if any(kwd in selected_subcats[0].lower() for kwd in ["nhà hàng", "quán ăn", "ẩm thực"]):
+                category = "Ẩm Thực"
+            elif any(kwd in selected_subcats[0].lower() for kwd in ["khách sạn", "homestay", "resort"]):
+                category = "Lưu Trú"
+        else:
+            sub_category = ["Danh lam thắng cảnh"]
+
+        places.append({
+            "id": item["id"],
+            "name": item["name"],
+            "latitude": item["latitude"],
+            "longitude": item["longitude"],
+            "address": item["address"],
+            "rating": item["rating"],
+            "review_count": item["review_count"],
+            "image_url": item["image_url"],
+            "google_maps_link": item["google_maps_link"],
+            "description": f"Một địa điểm nổi bật nằm tại {province}. Được du khách đánh giá cao ({item['rating']}⭐ từ {item['review_count']} lượt review trên Google Maps).",
+            "category": category,
+            "sub_category": sub_category,
+            "open_hours": "Tự do hoặc theo giờ hoạt động của địa điểm"
+        })
+
+    return places
