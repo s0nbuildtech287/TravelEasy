@@ -1,0 +1,8 @@
+*.env
+__pycache__/
+.ipynb_checkpoints/
+venv/
+.venv/
+node_modules/
+backend/app/rag_store/faiss.index
+backend/app/rag_store/records.pkl
