@@ -13,7 +13,7 @@ frontend/src/components/Info.svelte
   } from "../stores.js";
   import { getProvinces, getCategoryTree, getPlacesByProvinceAndCategory } from "../api/tourism.js";
   import { getHotelsNearPlace } from "../api/hotel.js";
-  import { getFoodsByProvinceAndTag, getNearbyEateries } from "../api/food.js";
+  import { getNearbyEateries } from "../api/food.js";
   import { generateItinerary } from "../api/itinerary.js";
 
   export let activeTab = "itinerary";
@@ -92,7 +92,7 @@ frontend/src/components/Info.svelte
       touristPlaces.set(placesList);
     } catch (e) {
       console.error(e);
-      itineraryMarkdown = "Đã xảy ra lỗi trong quá trình tạo lịch trình. Đảm bảo rằng khóa GEMINI_API_KEY trong file .env đã được điền chính xác.";
+      itineraryMarkdown = "Đã xảy ra lỗi trong quá trình tạo lịch trình. Đảm bảo rằng khóa OPENAI_API_KEY trong file .env đã được điền chính xác.";
     } finally {
       isLoadingItinerary = false;
     }
@@ -179,14 +179,14 @@ frontend/src/components/Info.svelte
   }
 </script>
 
-<div class="sidebar-wrapper">
+<div class="sidebar-wrapper glass-sidebar">
   {#if activeTab === "itinerary"}
     <!-- TAB 1: AI PLANNER -->
     <div class="tab-content">
       <div class="input-group">
-        <label for="province">Tỉnh/Thành phố muốn đi</label>
+        <label class="font-mono label-md" for="province">TỈNH / THÀNH PHỐ MUỐN ĐI</label>
         <div class="select-wrapper">
-          <select id="province" bind:value={provinceInput}>
+          <select id="province" class="input-well" bind:value={provinceInput}>
             {#each provinces as prov}
               <option value={prov}>{prov}</option>
             {/each}
@@ -195,12 +195,12 @@ frontend/src/components/Info.svelte
       </div>
 
       <div class="input-group">
-        <label for="days">Số ngày đi: {totalDays} ngày</label>
+        <label class="font-mono label-md" for="days">SỐ NGÀY ĐI: {totalDays} NGÀY</label>
         <input type="range" id="days" min="1" max="10" bind:value={totalDays} />
       </div>
 
       <div class="input-group">
-        <label>Sở thích của bạn</label>
+        <label class="font-mono label-md">SỞ THÍCH CỦA BẠN</label>
         <div class="chips-container">
           {#each ["Cảnh quan", "Ẩm thực", "Khu nghỉ dưỡng", "Chợ đêm", "Di tích"] as interest}
             <button 
@@ -213,21 +213,21 @@ frontend/src/components/Info.svelte
         </div>
       </div>
 
-      <button class="btn-primary w-full" on:click={handleGenerateItinerary} disabled={isLoadingItinerary}>
+      <button class="btn-glow w-full" on:click={handleGenerateItinerary} disabled={isLoadingItinerary}>
         {#if isLoadingItinerary}
           <span class="spinner"></span> Đang lập kế hoạch...
         {:else}
-          🤖 Lập lịch trình bằng AI
+          🤖 Lập lịch trình bằng GPT-4o
         {/if}
       </button>
 
       {#if itineraryMarkdown}
         <div class="itinerary-results-container">
-          <h3 class="text-gradient">Lịch trình đề xuất:</h3>
+          <h3 class="font-mono text-gradient headline-md">LỊCH TRÌNH ĐỀ XUẤT:</h3>
           <div class="markdown-body">
             {#each itineraryMarkdown.split("\n") as line}
-              {#if line.startsWith("###")}
-                <h4>{line.replace("###", "").trim()}</h4>
+              {#if line.startsWith("###") || line.startsWith("##") || line.startsWith("Ngày")}
+                <h4 class="font-mono text-gradient">{line.replace(/###|##/g, "").trim()}</h4>
               {:else if line.startsWith("*") || line.startsWith("-")}
                 <p class="bullet-line">{line.substring(1).trim()}</p>
               {:else if line.trim() !== ""}
@@ -245,20 +245,20 @@ frontend/src/components/Info.svelte
       {#if !$userLocation}
         <div class="no-gps-message">
           <div class="gps-icon">📍</div>
-          <p>Chưa xác định được vị trí GPS của bạn.</p>
+          <p class="font-mono">CHƯA XÁC ĐỊNH ĐƯỢC GPS</p>
           <p class="sub-text">Hãy bấm nút <strong>Định vị GPS của tôi</strong> trên thanh menu ở đầu trang để tìm quán ngon xung quanh.</p>
         </div>
       {:else}
-        <div class="gps-info glass">
+        <div class="gps-info input-well">
           <span class="gps-dot"></span>
-          <span>Tọa độ của bạn: {$userLocation.lat.toFixed(5)}, {$userLocation.lng.toFixed(5)}</span>
+          <span class="font-mono">Tọa độ: {$userLocation.lat.toFixed(5)}, {$userLocation.lng.toFixed(5)}</span>
         </div>
 
         <div class="food-search-actions">
-          <button class="btn-secondary" on:click={() => handleSearchEateries("restaurant")} disabled={isLoadingEateries}>
+          <button class="btn-ghost" on:click={() => handleSearchEateries("restaurant")} disabled={isLoadingEateries}>
             🍕 Tìm Quán Ăn Ngon
           </button>
-          <button class="btn-secondary" on:click={() => handleSearchEateries("cafe")} disabled={isLoadingEateries}>
+          <button class="btn-ghost" on:click={() => handleSearchEateries("cafe")} disabled={isLoadingEateries}>
             ☕ Tìm Quán Cafe Đẹp
           </button>
         </div>
@@ -269,11 +269,11 @@ frontend/src/components/Info.svelte
           </div>
         {:else if eateries.length > 0}
           <div class="results-list">
-            <h3 class="text-gradient">Quán ngon gần bạn (2km):</h3>
+            <h3 class="font-mono text-gradient label-md">QUÁN NGON GẦN BẠN:</h3>
             {#each eateries as eat, idx}
-              <div class="card glass shadow-sm">
+              <div class="glass-card">
                 <div class="card-header">
-                  <h4>{idx + 1}. {eat.name}</h4>
+                  <h4 class="font-mono">{idx + 1}. {eat.name}</h4>
                   {#if eat.rating}
                     <span class="badge badge-warning">⭐ {eat.rating}</span>
                   {/if}
@@ -297,9 +297,9 @@ frontend/src/components/Info.svelte
     <!-- TAB 3: SPOT DISCOVERY -->
     <div class="tab-content">
       <div class="input-group">
-        <label for="search-province">Chọn khu vực/Tỉnh</label>
+        <label class="font-mono label-md" for="search-province">CHỌN KHU VỰC / TỈNH</label>
         <div class="select-wrapper">
-          <select id="search-province" bind:value={provinceInput}>
+          <select id="search-province" class="input-well" bind:value={provinceInput}>
             {#each provinces as prov}
               <option value={prov}>{prov}</option>
             {/each}
@@ -309,7 +309,7 @@ frontend/src/components/Info.svelte
 
       {#if availableCategories && Object.keys(availableCategories).length > 0}
         <div class="input-group">
-          <label>Lọc theo thể loại</label>
+          <label class="font-mono label-md">LỌC THEO THỂ LOẠI</label>
           <div class="chips-container">
             {#each Object.keys(availableCategories) as cat}
               {#each availableCategories[cat] as subcat}
@@ -325,7 +325,7 @@ frontend/src/components/Info.svelte
         </div>
       {/if}
 
-      <button class="btn-primary w-full" on:click={handleSearchSpots} disabled={isLoadingSpots}>
+      <button class="btn-glow w-full" on:click={handleSearchSpots} disabled={isLoadingSpots}>
         {#if isLoadingSpots}
           <span class="spinner"></span> Đang tìm kiếm...
         {:else}
@@ -335,11 +335,11 @@ frontend/src/components/Info.svelte
 
       {#if spots.length > 0}
         <div class="results-list">
-          <h3 class="text-gradient">Danh lam thắng cảnh tìm thấy:</h3>
+          <h3 class="font-mono text-gradient label-md">DANH LAM THẮNG CẢNH TÌM THẤY:</h3>
           {#each spots as spot}
-            <div class="card glass shadow-sm {selectedSpot?.id === spot.id ? 'active-card' : ''}">
+            <div class="glass-card {selectedSpot?.id === spot.id ? 'active-card' : ''}">
               <div class="card-header">
-                <h4>{spot.name}</h4>
+                <h4 class="font-mono">{spot.name}</h4>
                 {#if spot.rating}
                   <span class="badge badge-success">⭐ {spot.rating}</span>
                 {/if}
@@ -347,16 +347,16 @@ frontend/src/components/Info.svelte
               <p class="card-address">📍 {spot.address}</p>
               <p class="card-description">{spot.description}</p>
               <div class="card-buttons">
-                <button class="btn-small" on:click={() => handleFindHotels(spot)}>
-                  🏨 Khách sạn gần đây
+                <button class="btn-small font-mono" on:click={() => handleFindHotels(spot)}>
+                  🏨 KHÁCH SẠN LÂN CẬN
                 </button>
                 <a href={spot.google_maps_link} target="_blank" class="card-link">Chỉ đường ↗</a>
               </div>
 
               <!-- Hotels list sub-panel inside selected spot -->
               {#if selectedSpot?.id === spot.id}
-                <div class="hotels-subpanel">
-                  <h5>Khách sạn gần {spot.name}:</h5>
+                <div class="hotels-subpanel input-well">
+                  <h5 class="font-mono">KHÁCH SẠN GẦN {spot.name.toUpperCase()}:</h5>
                   {#if isLoadingHotels}
                     <div class="loading-small">
                       <span class="spinner spinner-sm"></span> Đang quét Google Lodgings...
@@ -364,8 +364,8 @@ frontend/src/components/Info.svelte
                   {:else if hotels.length > 0}
                     <div class="hotel-items">
                       {#each hotels as hotel, hIdx}
-                        <div class="hotel-item border-b">
-                          <p class="hotel-name"><strong>{hIdx+1}. {hotel.hotel}</strong></p>
+                        <div class="hotel-item">
+                          <p class="hotel-name font-mono"><strong>{hIdx+1}. {hotel.hotel}</strong></p>
                           <p class="hotel-address-text">{hotel.address}</p>
                           {#if hotel.description}
                             <p class="hotel-desc">{hotel.description}</p>
@@ -397,6 +397,7 @@ frontend/src/components/Info.svelte
     display: flex;
     flex-direction: column;
     gap: 20px;
+    height: 100%;
   }
 
   .tab-content {
@@ -412,9 +413,7 @@ frontend/src/components/Info.svelte
   }
 
   label {
-    font-size: 13px;
-    font-weight: 600;
-    color: #94a3b8;
+    color: #adc6ff;
   }
 
   .select-wrapper {
@@ -424,11 +423,7 @@ frontend/src/components/Info.svelte
 
   select {
     width: 100%;
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 8px;
     padding: 10px 14px;
-    color: white;
     font-size: 14px;
     font-weight: 500;
     outline: none;
@@ -438,7 +433,10 @@ frontend/src/components/Info.svelte
 
   input[type="range"] {
     width: 100%;
-    accent-color: #3b82f6;
+    accent-color: #5de6ff;
+    background: rgba(255, 255, 255, 0.05);
+    height: 6px;
+    border-radius: 999px;
   }
 
   .chips-container {
@@ -448,11 +446,11 @@ frontend/src/components/Info.svelte
   }
 
   .chip {
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: rgba(15, 28, 48, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     color: #94a3b8;
     padding: 6px 12px;
-    border-radius: 999px;
+    border-radius: 8px;
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
@@ -460,14 +458,16 @@ frontend/src/components/Info.svelte
   }
 
   .chip:hover {
-    background: #334155;
+    background: rgba(21, 38, 65, 0.6);
     color: white;
+    border-color: rgba(93, 230, 255, 0.15);
   }
 
   .chip.active {
-    background: rgba(59, 130, 246, 0.15);
-    border-color: #3b82f6;
-    color: #60a5fa;
+    background: rgba(93, 230, 255, 0.1);
+    border-color: #5de6ff;
+    color: #5de6ff;
+    box-shadow: 0 0 10px rgba(93, 230, 255, 0.15);
   }
 
   .w-full {
@@ -481,8 +481,8 @@ frontend/src/components/Info.svelte
     height: 16px;
     border: 2px solid rgba(255, 255, 255, 0.3);
     border-radius: 50%;
-    border-top-color: white;
-    animation: spin 1s ease-in-out infinite;
+    border-top-color: #5de6ff;
+    animation: spin 1s linear infinite;
     margin-right: 8px;
   }
 
@@ -498,28 +498,28 @@ frontend/src/components/Info.svelte
   /* Timeline results styling */
   .itinerary-results-container {
     margin-top: 10px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
     padding-top: 20px;
   }
 
   .markdown-body {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(4, 14, 31, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.03);
     padding: 16px;
-    border-radius: 8px;
+    border-radius: 12px;
     font-size: 13.5px;
     line-height: 1.6;
-    color: #cbd5e1;
+    color: #d8e3fb;
     max-height: 500px;
     overflow-y: auto;
   }
 
   .markdown-body h4 {
-    color: #60a5fa;
-    font-size: 15px;
+    color: #5de6ff;
+    font-size: 14px;
     margin-top: 18px;
     margin-bottom: 8px;
-    border-left: 3px solid #3b82f6;
+    border-left: 2px solid #5de6ff;
     padding-left: 8px;
   }
 
@@ -536,7 +536,7 @@ frontend/src/components/Info.svelte
     content: "•";
     position: absolute;
     left: 0;
-    color: #8b5cf6;
+    color: #adc6ff;
   }
 
   /* GPS Info panel */
@@ -545,22 +545,20 @@ frontend/src/components/Info.svelte
     align-items: center;
     gap: 8px;
     padding: 10px 14px;
-    border-radius: 8px;
     font-size: 12px;
-    color: #94a3b8;
-    border-color: rgba(59, 130, 246, 0.1);
   }
 
   .gps-dot {
     width: 8px;
     height: 8px;
-    background: #10b981;
+    background: #00cbe6;
     border-radius: 50%;
     animation: flash 1.5s infinite;
+    box-shadow: 0 0 10px #00cbe6;
   }
 
   @keyframes flash {
-    0%, 100% { opacity: 0.3; }
+    0%, 100% { opacity: 0.4; }
     50% { opacity: 1; }
   }
 
@@ -593,9 +591,8 @@ frontend/src/components/Info.svelte
 
   .food-search-actions button {
     flex: 1;
-    font-size: 13px;
+    font-size: 12px;
     padding: 10px;
-    border-radius: 8px;
   }
 
   /* Results listings */
@@ -607,30 +604,21 @@ frontend/src/components/Info.svelte
   }
 
   .results-list h3 {
-    font-size: 15px;
-    font-weight: 600;
     margin-bottom: 4px;
   }
 
-  .card {
-    padding: 14px;
-    border-radius: 10px;
+  .glass-card {
+    padding: 16px;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    background: rgba(30, 41, 59, 0.4);
-    border-color: rgba(255, 255, 255, 0.04);
-    transition: all 0.2s ease;
-  }
-
-  .card:hover {
-    background: rgba(30, 41, 59, 0.6);
-    border-color: rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
   }
 
   .active-card {
-    border-color: rgba(59, 130, 246, 0.5) !important;
-    background: rgba(59, 130, 246, 0.05) !important;
+    border-color: rgba(93, 230, 255, 0.4) !important;
+    background: rgba(21, 38, 65, 0.5) !important;
+    box-shadow: 0 0 20px -5px rgba(93, 230, 255, 0.2) !important;
   }
 
   .card-header {
@@ -643,7 +631,6 @@ frontend/src/components/Info.svelte
   .card-header h4 {
     margin: 0;
     font-size: 14px;
-    font-weight: 600;
     color: #f1f5f9;
   }
 
@@ -657,11 +644,13 @@ frontend/src/components/Info.svelte
   .badge-warning {
     background: rgba(245, 158, 11, 0.15);
     color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.2);
   }
 
   .badge-success {
     background: rgba(16, 185, 129, 0.15);
     color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.2);
   }
 
   .card-address {
@@ -685,48 +674,49 @@ frontend/src/components/Info.svelte
   }
 
   .btn-small {
-    background: #1e293b;
-    border: 1px solid #334155;
-    color: #60a5fa;
-    padding: 6px 10px;
+    background: rgba(4, 14, 31, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    color: #5de6ff;
+    padding: 6px 12px;
     border-radius: 6px;
-    font-size: 11px;
+    font-size: 10.5px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all 0.2s ease;
   }
 
   .btn-small:hover {
-    background: #334155;
+    background: rgba(93, 230, 255, 0.1);
+    border-color: #5de6ff;
     color: white;
+    box-shadow: 0 0 10px rgba(93, 230, 255, 0.15);
   }
 
   .card-link {
     font-size: 11.5px;
     font-weight: 600;
-    color: #8b5cf6;
+    color: #adc6ff;
     text-decoration: none;
+    transition: color 0.2s ease;
   }
 
   .card-link:hover {
-    color: #a78bfa;
+    color: #5de6ff;
     text-decoration: underline;
   }
 
   /* Hotels inside card details */
   .hotels-subpanel {
     margin-top: 10px;
-    background: rgba(15, 23, 42, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 8px;
     padding: 12px;
   }
 
   .hotels-subpanel h5 {
     margin: 0 0 10px 0;
-    font-size: 12px;
-    color: #60a5fa;
-    font-weight: 600;
+    font-size: 11px;
+    color: #5de6ff;
+    letter-spacing: 0.05em;
   }
 
   .loading-small {
@@ -740,13 +730,13 @@ frontend/src/components/Info.svelte
   .hotel-items {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
   }
 
   .hotel-item {
     font-size: 11.5px;
     color: #cbd5e1;
-    padding-bottom: 6px;
+    padding-bottom: 8px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   }
 
@@ -775,13 +765,14 @@ frontend/src/components/Info.svelte
 
   .hotel-link {
     font-size: 10.5px;
-    color: #60a5fa;
+    color: #5de6ff;
     font-weight: 600;
     text-decoration: none;
+    transition: color 0.2s ease;
   }
 
   .hotel-link:hover {
-    color: #93c5fd;
+    color: #adc6ff;
     text-decoration: underline;
   }
 

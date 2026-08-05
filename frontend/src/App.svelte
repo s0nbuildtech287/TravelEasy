@@ -37,44 +37,44 @@ frontend/src/App.svelte
   }
 </script>
 
-<header class="glass">
+<header class="glass-header">
   <div class="header-container">
     <div class="logo" on:click={handleReset}>
       <span class="logo-icon">✈️</span>
-      <span class="logo-text text-gradient">TravelEasy</span>
+      <span class="logo-text text-gradient font-mono">TravelEasy</span>
     </div>
 
     <nav>
       <button 
-        class="nav-link {activeTab === 'itinerary' ? 'active' : ''}" 
+        class="nav-link font-mono {activeTab === 'itinerary' ? 'active' : ''}" 
         on:click={() => activeTab = "itinerary"}
       >
-        🤖 Lịch Trình AI
+        🤖 LỊCH TRÌNH AI
       </button>
       <button 
-        class="nav-link {activeTab === 'foods' ? 'active' : ''}" 
+        class="nav-link font-mono {activeTab === 'foods' ? 'active' : ''}" 
         on:click={() => activeTab = "foods"}
       >
-        🍕 Ăn Uống Gần Đây
+        🍕 ĂN UỐNG GẦN ĐÂY
       </button>
       <button 
-        class="nav-link {activeTab === 'search' ? 'active' : ''}" 
+        class="nav-link font-mono {activeTab === 'search' ? 'active' : ''}" 
         on:click={() => activeTab = "search"}
       >
-        🔍 Khám Phá Địa Điểm
+        🔍 KHÁM PHÁ ĐỊA ĐIỂM
       </button>
     </nav>
 
     <div class="actions">
-      <button class="btn-location glass" on:click={handleGetLocation}>
-        📍 Định vị GPS của tôi
+      <button class="btn-ghost font-mono" on:click={handleGetLocation}>
+        📍 ĐỊNH VỊ GPS
       </button>
     </div>
   </div>
 </header>
 
 <main>
-  <div class="sidebar-container glass">
+  <div class="sidebar-container glass-sidebar">
     <Info {activeTab} />
   </div>
 
@@ -99,14 +99,16 @@ frontend/src/App.svelte
     z-index: 10;
     display: flex;
     align-items: center;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    background: rgba(8, 20, 37, 0.7);
+    backdrop-filter: blur(20px);
   }
 
   .header-container {
     max-width: 1600px;
     width: 100%;
     margin: 0 auto;
-    padding: 0 20px;
+    padding: 0 24px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -123,44 +125,38 @@ frontend/src/App.svelte
 
   nav {
     display: flex;
-    gap: 8px;
+    gap: 12px;
   }
 
   .nav-link {
     background: transparent;
-    border: none;
+    border: 1px solid transparent;
     color: #94a3b8;
     padding: 8px 16px;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 600;
-    border-radius: 6px;
+    letter-spacing: 0.05em;
+    border-radius: 8px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .nav-link:hover {
-    color: #f1f5f9;
-    background: rgba(255, 255, 255, 0.03);
+    color: white;
+    background: rgba(255, 255, 255, 0.02);
   }
 
   .nav-link.active {
-    color: white;
-    background: rgba(59, 130, 246, 0.15);
-    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #5de6ff;
+    background: rgba(93, 230, 255, 0.1);
+    border-color: rgba(93, 230, 255, 0.3);
+    box-shadow: 0 0 15px rgba(93, 230, 255, 0.15);
   }
 
-  .btn-location {
-    font-size: 13px;
-    color: #60a5fa;
-    border: 1px solid rgba(96, 165, 250, 0.2);
+  .actions .btn-ghost {
+    font-size: 11px;
     padding: 8px 16px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .btn-location:hover {
-    background: rgba(96, 165, 250, 0.1);
-    border-color: #60a5fa;
+    letter-spacing: 0.05em;
   }
 
   main {
@@ -173,11 +169,13 @@ frontend/src/App.svelte
   .sidebar-container {
     width: 480px;
     height: 100%;
-    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    border-right: 1px solid rgba(255, 255, 255, 0.03);
     border-radius: 0;
     display: flex;
     flex-direction: column;
     z-index: 5;
+    background: rgba(4, 14, 31, 0.65);
+    backdrop-filter: blur(16px);
   }
 
   .map-container {

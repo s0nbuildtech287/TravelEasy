@@ -71,8 +71,10 @@ frontend/my-vietnam-map/src/components/Map.svelte
     // Khởi tạo bản đồ tại toạ độ Việt Nam (Đà Nẵng làm trung tâm)
     map = L.map(mapElement).setView([16.047079, 108.206230], 6);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+      subdomains: 'abcd',
+      maxZoom: 20
     }).addTo(map);
 
     markerGroup = L.layerGroup().addTo(map);
@@ -300,6 +302,20 @@ frontend/my-vietnam-map/src/components/Map.svelte
   }
 
   /* Popup styling */
+  :global(.leaflet-popup-content-wrapper) {
+    background: rgba(8, 20, 37, 0.95) !important;
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(93, 230, 255, 0.15) !important;
+    color: #d8e3fb !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 25px rgba(0,0,0,0.5) !important;
+  }
+  
+  :global(.leaflet-popup-tip) {
+    background: rgba(8, 20, 37, 0.95) !important;
+    border: 1px solid rgba(93, 230, 255, 0.15) !important;
+  }
+
   :global(.map-popup) {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     padding: 2px;
@@ -309,12 +325,12 @@ frontend/my-vietnam-map/src/components/Map.svelte
     margin-top: 5px;
     font-size: 12px;
     font-weight: 600;
-    color: #007bff;
+    color: #5de6ff;
     text-decoration: none;
     transition: color 0.15s ease;
   }
   :global(.popup-link:hover) {
-    color: #0056b3;
+    color: #adc6ff;
     text-decoration: underline;
   }
 </style>
