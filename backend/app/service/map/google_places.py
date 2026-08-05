@@ -1,23 +1,109 @@
 # backend/app/service/map/google_places.py
 import os
+import json
 import httpx
 from dotenv import load_dotenv
 
-# Nạp file .env ngay khi import module
+# Nap file .env ngay khi import module
 load_dotenv()
+
+
+async def call_openai_places_fallback(prompt: str) -> dict:
+    """
+    Ham du phong goi OpenAI de tao du lieu dia diem gia lap thuc te neu Google Cloud API bi chan.
+    """
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        print("[ERROR] OpenAI API Key chua duoc cau hinh. Khong the dung AI du phong.")
+        return {"results": []}
+
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=api_key)
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a precise JSON generator for tourism data."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7
+        )
+        content = response.choices[0].message.content.strip()
+
+        # Lam sach markdown json neu co
+        if content.startswith("```"):
+            lines = content.splitlines()
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines[-1].startswith("```"):
+                lines = lines[:-1]
+            content = "\n".join(lines).strip()
+
+        data = json.loads(content)
+        # Bo sung google_maps_link mac dinh neu thieu
+        for p in data.get("results", []):
+            if not p.get("google_maps_link") and p.get("latitude") and p.get("longitude"):
+                p["google_maps_link"] = f"https://www.google.com/maps?q={p['latitude']},{p['longitude']}"
+        return data
+    except Exception as e:
+        print(f"[ERROR] Loi khi tao du lieu du phong tu OpenAI: {e}")
+        return {"results": []}
+
+
+async def get_nearby_places_openai_fallback(lat: float, lng: float, radius: int, place_type: str) -> dict:
+    prompt = f"""
+    Bạn là một trợ lý bản đồ du lịch. Hãy gợi ý 6 địa điểm dịch vụ hoặc điểm ăn uống thực tế có thật tại khu vực gần tọa độ {lat}, {lng} ở Việt Nam, phù hợp với loại hình "{place_type}" (ví dụ: restaurant là nhà hàng, cafe là quán cà phê, lodging là khách sạn).
+    Tất cả các địa điểm phải thực sự tồn tại ở vùng lân cận tọa độ này. Tọa độ (latitude, longitude) phải được tính toán chính xác để nằm cách tọa độ gốc tối đa {radius} mét.
+    Yêu cầu trả về DUY NHẤT một chuỗi JSON hợp lệ theo định dạng sau, không kèm bất kỳ giải thích nào:
+    {{
+      "results": [
+        {{
+          "id": "id_ngau_nhien_1",
+          "name": "Tên địa điểm thực tế",
+          "latitude": vĩ_độ_số_thực,
+          "longitude": kinh_độ_số_thực,
+          "address": "Địa chỉ chi tiết tại Việt Nam",
+          "rating": số_thực_đánh_giá_từ_3.8_đến_5.0,
+          "review_count": số_lượng_đánh_giá_số_nguyên,
+          "google_maps_link": "link_google_maps_tim_kiem_dia_diem"
+        }}
+      ]
+    }}
+    """
+    return await call_openai_places_fallback(prompt)
+
+
+async def get_text_places_openai_fallback(query: str) -> dict:
+    prompt = f"""
+    Bạn là một hướng dẫn viên du lịch chuyên nghiệp. Hãy tìm kiếm và gợi ý 6 địa điểm tham quan du lịch nổi tiếng thực tế tại Việt Nam phù hợp nhất với truy vấn: "{query}".
+    Mỗi địa điểm phải có tọa độ địa lý (latitude, longitude) chính xác của địa danh đó.
+    Yêu cầu trả về DUY NHẤT một chuỗi JSON hợp lệ theo định dạng sau, không kèm bất kỳ giải thích nào:
+    {{
+      "results": [
+        {{
+          "id": "id_ngau_nhien_1",
+          "name": "Tên địa danh thực tế (Ví dụ: Cột cờ Lũng Cú)",
+          "latitude": vĩ_độ_thực_số_thực,
+          "longitude": kinh_độ_thực_số_thực,
+          "address": "Địa chỉ chi tiết (huyện, tỉnh thành)",
+          "rating": số_thực_đánh_giá_từ_4.0_đến_5.0,
+          "review_count": số_nguyên_luot_đánh_giá,
+          "google_maps_link": "link_google_maps_thong_tin_dia_diem"
+        }}
+      ]
+    }}
+    """
+    return await call_openai_places_fallback(prompt)
 
 
 async def search_nearby_places(lat: float, lng: float, radius: int = 1000, place_type: str = "restaurant"):
     """
-    Tìm kiếm địa điểm xung quanh bằng Google Places API (Nearby Search Legacy).
-    - lat, lng: Tọa độ trung tâm
-    - radius: Bán kính tìm kiếm (mét)
-    - place_type: Loại địa điểm (restaurant, lodging, tourist_attraction)
+    Tim kiem dia diem xung quanh bang Google Places API. Neu loi/chua bat thanh toan, chuyen sang AI du phong.
     """
     api_key = os.getenv("GOOGLE_PLACES_API_KEY")
     if not api_key or api_key == "YOUR_GOOGLE_PLACES_API_KEY_HERE":
-        print("[WARN] GOOGLE_PLACES_API_KEY chưa được cấu hình. Trả về kết quả tìm kiếm rỗng.")
-        return {"results": []}
+        print("[WARN] Google Places API Key chua bat. Chuyen sang AI du phong...")
+        return await get_nearby_places_openai_fallback(lat, lng, radius, place_type)
 
     url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
     params = {
@@ -31,10 +117,13 @@ async def search_nearby_places(lat: float, lng: float, radius: int = 1000, place
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url, params=params)
+            response.raise_for_status()
             data = response.json()
+
             status = data.get("status")
             if status != "OK" and status != "ZERO_RESULTS":
-                print(f"[WARN] Google Places Nearby Search status: {status}. Message: {data.get('error_message')}")
+                print(f"[WARN] Google Places Nearby Search status: {status}. Message: {data.get('error_message')}. Chuyen sang dung OpenAI du phong...")
+                return await get_nearby_places_openai_fallback(lat, lng, radius, place_type)
 
             raw_results = data.get("results", [])
             places = []
@@ -43,7 +132,7 @@ async def search_nearby_places(lat: float, lng: float, radius: int = 1000, place
                 lng_p = item.get("geometry", {}).get("location", {}).get("lng")
                 google_maps_link = f"https://www.google.com/maps?q={lat_p},{lng_p}" if lat_p and lng_p else ""
 
-                # Lấy link ảnh từ photo reference
+                # Lay link anh tu photo reference
                 image_url = None
                 photos = item.get("photos", [])
                 if photos:
@@ -56,7 +145,7 @@ async def search_nearby_places(lat: float, lng: float, radius: int = 1000, place
                     "name": item.get("name"),
                     "latitude": lat_p,
                     "longitude": lng_p,
-                    "address": item.get("vicinity", "Không rõ địa chỉ"),
+                    "address": item.get("vicinity", "Khong ro dia chi"),
                     "rating": item.get("rating", 0.0),
                     "review_count": item.get("user_ratings_total", 0),
                     "image_url": image_url,
@@ -65,17 +154,16 @@ async def search_nearby_places(lat: float, lng: float, radius: int = 1000, place
                 })
             return {"results": places}
     except Exception as e:
-        print(f"[ERROR] Thất bại khi quét Google Places API: {e}")
-        return {"results": []}
+        print(f"[ERROR] Google Places Nearby Search that bai: {e}. Chuyen sang AI du phong...")
+        return await get_nearby_places_openai_fallback(lat, lng, radius, place_type)
 
 
 async def geocode_address(address: str):
     """
-    Chuyển địa chỉ bằng chữ sang tọa độ (Geocoding API).
+    Chuyen dia chi bang chu sang toa do (Geocoding API).
     """
     api_key = os.getenv("GOOGLE_PLACES_API_KEY")
     if not api_key or api_key == "YOUR_GOOGLE_PLACES_API_KEY_HERE":
-        print("[WARN] GOOGLE_PLACES_API_KEY chưa được cấu hình. Geocoding sẽ thất bại.")
         return None
 
     url = "https://maps.googleapis.com/maps/api/geocode/json"
@@ -99,18 +187,18 @@ async def geocode_address(address: str):
                     "address": results[0].get("formatted_address")
                 }
     except Exception as e:
-        print(f"[ERROR] Geocoding thất bại: {e}")
+        print(f"[ERROR] Geocoding that bai: {e}")
     return None
 
 
 async def search_text_places(query: str):
     """
-    Tìm kiếm địa điểm bằng chữ (Text Search API).
+    Tim kiem dia diem bang chu (Text Search API). Neu loi/chua bat thanh toan, chuyen sang AI du phong.
     """
     api_key = os.getenv("GOOGLE_PLACES_API_KEY")
     if not api_key or api_key == "YOUR_GOOGLE_PLACES_API_KEY_HERE":
-        print("[WARN] GOOGLE_PLACES_API_KEY chưa được cấu hình. Trả về rỗng.")
-        return {"results": []}
+        print("[WARN] Google Places API Key chua bat. Chuyen sang AI du phong...")
+        return await get_text_places_openai_fallback(query)
 
     url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
     params = {
@@ -122,10 +210,13 @@ async def search_text_places(query: str):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url, params=params)
+            response.raise_for_status()
             data = response.json()
+
             status = data.get("status")
             if status != "OK" and status != "ZERO_RESULTS":
-                print(f"[WARN] Google Places Text Search status: {status}. Message: {data.get('error_message')}")
+                print(f"[WARN] Google Places Text Search status: {status}. Message: {data.get('error_message')}. Chuyen sang dung OpenAI du phong...")
+                return await get_text_places_openai_fallback(query)
 
             raw_results = data.get("results", [])
             places = []
@@ -146,7 +237,7 @@ async def search_text_places(query: str):
                     "name": item.get("name"),
                     "latitude": lat_p,
                     "longitude": lng_p,
-                    "address": item.get("formatted_address", "Không rõ địa chỉ"),
+                    "address": item.get("formatted_address", "Khong ro dia chi"),
                     "rating": item.get("rating", 0.0),
                     "review_count": item.get("user_ratings_total", 0),
                     "image_url": image_url,
@@ -155,5 +246,5 @@ async def search_text_places(query: str):
                 })
             return {"results": places}
     except Exception as e:
-        print(f"[ERROR] Text search thất bại: {e}")
-        return {"results": []}
+        print(f"[ERROR] Google Places Text Search that bai: {e}. Chuyen sang AI du phong...")
+        return await get_text_places_openai_fallback(query)
