@@ -1,5 +1,6 @@
 # backend/app/service/map/google_places.py
 import os
+import json
 import httpx
 from typing import Dict, List
 
@@ -16,19 +17,18 @@ async def search_nearby_places(lat: float, lng: float, radius: int = 1000, place
     - radius: Ban kinh (met)
     - place_type: loai dia diem (restaurant, cafe, lodging)
     """
-    # Chuyen doi place_type sang tu khoa tieng Viet tuong ung de tim kiem OpenStreetMap chính xác hon
+    # Su dung tu khoa tieng Anh don gian khop truc tiep voi lop/the (class/tag) cua OpenStreetMap
     type_map = {
-        "restaurant": "nhà hàng",
-        "cafe": "cà phê",
-        "lodging": "khách sạn",
-        "hotel": "khách sạn",
-        "tourist_attraction": "điểm du lịch"
+        "restaurant": "restaurant",
+        "cafe": "cafe",
+        "lodging": "hotel",
+        "hotel": "hotel",
+        "tourist_attraction": "attraction"
     }
-    keyword = type_map.get(place_type, "địa điểm")
+    keyword = type_map.get(place_type, "attraction")
 
-    # Tinh toan bounding box (viewbox) theo ban kinh (1 do vi do ~ 111,000m)
-    # Tinh doi offset tu met sang do
-    offset = radius / 111000.0
+    # Tinh toan bounding box (viewbox) theo ban kinh, nhan 2.5 de tang pham vi tim kiem
+    offset = (radius * 2.5) / 111000.0
 
     min_lon = lng - offset
     max_lon = lng + offset
@@ -41,13 +41,14 @@ async def search_nearby_places(lat: float, lng: float, radius: int = 1000, place
         "format": "json",
         "viewbox": f"{min_lon},{max_lat},{max_lon},{min_lat}",
         "bounded": 1,
-        "limit": 10,
+        "limit": 30,
         "accept-language": "vi"
     }
 
     try:
         async with httpx.AsyncClient() as client:
-            print(f"[OSM Nearby] Queting around {lat},{lng} with viewbox offset {offset}")
+            # Khong in tu khoa tieng Viet co dau ra console de tranh loi encoding tren Windows
+            print(f"[OSM Nearby] Querying type '{place_type}' around {lat},{lng} with viewbox offset {offset}")
             response = await client.get(url, params=params, headers=NOMINATIM_HEADERS, timeout=10.0)
             response.raise_for_status()
             raw_results = response.json()
@@ -122,14 +123,15 @@ async def search_text_places(query: str):
     params = {
         "q": query,
         "format": "json",
-        "limit": 10,
+        "limit": 30,
         "countrycodes": "vn",
         "accept-language": "vi"
     }
 
     try:
         async with httpx.AsyncClient() as client:
-            print(f"[OSM Text Search] Querying: '{query}'")
+            # Khong in truc tiep query co dau ra console de tranh loi encoding tren Windows
+            print(f"[OSM Text Search] Querying...")
             response = await client.get(url, params=params, headers=NOMINATIM_HEADERS, timeout=10.0)
             response.raise_for_status()
             raw_results = response.json()
