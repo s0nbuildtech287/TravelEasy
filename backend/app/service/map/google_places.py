@@ -1,8 +1,10 @@
 # backend/app/service/map/google_places.py
 import os
 import httpx
+from dotenv import load_dotenv
 
-GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY")
+# Nạp file .env ngay khi import module
+load_dotenv()
 
 
 async def search_nearby_places(lat: float, lng: float, radius: int = 1000, place_type: str = "restaurant"):
@@ -12,7 +14,8 @@ async def search_nearby_places(lat: float, lng: float, radius: int = 1000, place
     - radius: Bán kính tìm kiếm (mét)
     - place_type: Loại địa điểm (restaurant, lodging, tourist_attraction)
     """
-    if not GOOGLE_PLACES_API_KEY or GOOGLE_PLACES_API_KEY == "YOUR_GOOGLE_PLACES_API_KEY_HERE":
+    api_key = os.getenv("GOOGLE_PLACES_API_KEY")
+    if not api_key or api_key == "YOUR_GOOGLE_PLACES_API_KEY_HERE":
         print("[WARN] GOOGLE_PLACES_API_KEY chưa được cấu hình. Trả về kết quả tìm kiếm rỗng.")
         return {"results": []}
 
@@ -21,7 +24,7 @@ async def search_nearby_places(lat: float, lng: float, radius: int = 1000, place
         "location": f"{lat},{lng}",
         "radius": radius,
         "type": place_type,
-        "key": GOOGLE_PLACES_API_KEY,
+        "key": api_key,
         "language": "vi"
     }
 
@@ -44,7 +47,7 @@ async def search_nearby_places(lat: float, lng: float, radius: int = 1000, place
                 if photos:
                     photo_ref = photos[0].get("photo_reference")
                     if photo_ref:
-                        image_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference={photo_ref}&key={GOOGLE_PLACES_API_KEY}"
+                        image_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference={photo_ref}&key={api_key}"
 
                 places.append({
                     "id": item.get("place_id"),
@@ -68,14 +71,15 @@ async def geocode_address(address: str):
     """
     Chuyển địa chỉ bằng chữ sang tọa độ (Geocoding API).
     """
-    if not GOOGLE_PLACES_API_KEY or GOOGLE_PLACES_API_KEY == "YOUR_GOOGLE_PLACES_API_KEY_HERE":
+    api_key = os.getenv("GOOGLE_PLACES_API_KEY")
+    if not api_key or api_key == "YOUR_GOOGLE_PLACES_API_KEY_HERE":
         print("[WARN] GOOGLE_PLACES_API_KEY chưa được cấu hình. Geocoding sẽ thất bại.")
         return None
 
     url = "https://maps.googleapis.com/maps/api/geocode/json"
     params = {
         "address": address,
-        "key": GOOGLE_PLACES_API_KEY,
+        "key": api_key,
         "language": "vi"
     }
 
@@ -101,7 +105,6 @@ async def search_text_places(query: str):
     """
     Tìm kiếm địa điểm bằng chữ (Text Search API).
     """
-    # Dynamic reload in case .env was updated
     api_key = os.getenv("GOOGLE_PLACES_API_KEY")
     if not api_key or api_key == "YOUR_GOOGLE_PLACES_API_KEY_HERE":
         print("[WARN] GOOGLE_PLACES_API_KEY chưa được cấu hình. Trả về rỗng.")
