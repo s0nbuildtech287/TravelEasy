@@ -45,26 +45,20 @@ function App() {
       maxZoom: 20
     });
 
-    const satelliteTile = window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Tiles &copy; Esri',
-      maxZoom: 18
+    const googleHybrid = window.L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+      attribution: '&copy; Google Maps',
+      maxZoom: 20
     });
 
-    const referenceOverlay = window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Labels &copy; Esri',
-      maxZoom: 18
-    });
-
-    const streetsTile = window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+    const googleStreets = window.L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+      attribution: '&copy; Google Maps',
       maxZoom: 20
     });
 
     tileLayersRef.current = {
       dark: darkTile,
-      satellite: satelliteTile,
-      reference: referenceOverlay,
-      streets: streetsTile
+      hybrid: googleHybrid,
+      streets: googleStreets
     };
 
     // Add default (dark)
@@ -84,21 +78,17 @@ function App() {
   const handleSwitchStyle = (style) => {
     const map = mapInstanceRef.current;
     const layers = tileLayersRef.current;
-    if (!map || !layers.dark || !layers.satellite || !layers.reference || !layers.streets) return;
+    if (!map || !layers.dark || !layers.hybrid || !layers.streets) return;
 
     // Clear all existing map styles from the map
     if (map.hasLayer(layers.dark)) map.removeLayer(layers.dark);
-    if (map.hasLayer(layers.satellite)) map.removeLayer(layers.satellite);
-    if (map.hasLayer(layers.reference)) map.removeLayer(layers.reference);
+    if (map.hasLayer(layers.hybrid)) map.removeLayer(layers.hybrid);
     if (map.hasLayer(layers.streets)) map.removeLayer(layers.streets);
 
     if (style === 'dark') {
       layers.dark.addTo(map);
-    } else if (style === 'satellite') {
-      layers.satellite.addTo(map);
     } else if (style === 'hybrid') {
-      layers.satellite.addTo(map);
-      layers.reference.addTo(map); // Add place names on top of satellite
+      layers.hybrid.addTo(map);
     } else if (style === 'streets') {
       layers.streets.addTo(map);
     }
