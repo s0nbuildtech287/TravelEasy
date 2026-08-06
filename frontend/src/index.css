@@ -1,0 +1,168 @@
+/* C:\Users\XUAN SON\Desktop\Xuan Son Version\TravelEasy\frontend\src\index.css */
+:root {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: dark;
+  color: #d8e3fb;
+  background-color: #040d1a;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background-color: #040d1a;
+  color: #d8e3fb;
+  overflow: hidden;
+}
+
+/* Custom Scrollbar for HUD panels */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(4, 13, 26, 0.5);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(93, 230, 255, 0.3);
+}
+
+/* Radar/Glassmorphic HUD Classes */
+.glass-panel {
+  background: rgba(8, 20, 38, 0.75);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #a2ccff, #5de6ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Dark Map Styling */
+.leaflet-container {
+  background: #040d1a !important;
+  outline: 0;
+}
+
+/* Hide Leaflet default attribution style if needed or style it dark */
+.leaflet-control-attribution {
+  background: rgba(4, 13, 26, 0.7) !important;
+  color: #587094 !important;
+  border-top-left-radius: 4px;
+}
+
+.leaflet-control-zoom {
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: none !important;
+}
+
+.leaflet-control-zoom-in, .leaflet-control-zoom-out {
+  background-color: rgba(8, 20, 38, 0.85) !important;
+  color: #d8e3fb !important;
+  border: none !important;
+  backdrop-filter: blur(10px);
+}
+
+.leaflet-control-zoom-in:hover, .leaflet-control-zoom-out:hover {
+  background-color: #5de6ff !important;
+  color: #040d1a !important;
+}
+
+/* Radar Rotating Sweep Animation */
+@keyframes radar-sweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.radar-spinner {
+  position: relative;
+  overflow: hidden;
+}
+
+.radar-spinner::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(from 0deg, rgba(93, 230, 255, 0.1) 0deg, transparent 90deg);
+  transform-origin: top left;
+  transform: translate(-50%, -50%);
+  animation: radar-sweep 4s linear infinite;
+  pointer-events: none;
+}
+
+/* Custom Plane Markers */
+.custom-plane-icon {
+  background: transparent;
+  border: none;
+}
+
+.plane-svg {
+  filter: drop-shadow(0px 0px 4px rgba(93, 230, 255, 0.7));
+  transition: fill 0.3s ease, transform 0.3s ease;
+  transform-origin: center;
+}
+
+.plane-svg:hover {
+  filter: drop-shadow(0px 0px 8px #5de6ff);
+}
+
+.plane-selected {
+  filter: drop-shadow(0px 0px 10px #ff5d8f) !important;
+}
+
+/* Input Fields */
+.input-well {
+  background: rgba(4, 14, 31, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #d8e3fb;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.input-well:focus {
+  border-color: #5de6ff;
+  box-shadow: 0 0 15px rgba(93, 230, 255, 0.2);
+  outline: none;
+}
+
+/* Badge classes */
+.badge-neon {
+  background: rgba(93, 230, 255, 0.1);
+  border: 1px solid rgba(93, 230, 255, 0.2);
+  color: #5de6ff;
+}
+
+.badge-warning {
+  background: rgba(255, 179, 93, 0.1);
+  border: 1px solid rgba(255, 179, 93, 0.2);
+  color: #ffb35d;
+}
+
+.badge-danger {
+  background: rgba(255, 93, 143, 0.1);
+  border: 1px solid rgba(255, 93, 143, 0.2);
+  color: #ff5d8f;
+}
