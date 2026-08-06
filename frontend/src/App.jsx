@@ -46,13 +46,25 @@ function App() {
     });
 
     const satelliteTile = window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+      attribution: 'Tiles &copy; Esri',
       maxZoom: 18
+    });
+
+    const referenceOverlay = window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Labels &copy; Esri',
+      maxZoom: 18
+    });
+
+    const streetsTile = window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+      maxZoom: 20
     });
 
     tileLayersRef.current = {
       dark: darkTile,
-      satellite: satelliteTile
+      satellite: satelliteTile,
+      reference: referenceOverlay,
+      streets: streetsTile
     };
 
     // Add default (dark)
@@ -72,14 +84,23 @@ function App() {
   const handleSwitchStyle = (style) => {
     const map = mapInstanceRef.current;
     const layers = tileLayersRef.current;
-    if (!map || !layers.dark || !layers.satellite) return;
+    if (!map || !layers.dark || !layers.satellite || !layers.reference || !layers.streets) return;
+
+    // Clear all existing map styles from the map
+    if (map.hasLayer(layers.dark)) map.removeLayer(layers.dark);
+    if (map.hasLayer(layers.satellite)) map.removeLayer(layers.satellite);
+    if (map.hasLayer(layers.reference)) map.removeLayer(layers.reference);
+    if (map.hasLayer(layers.streets)) map.removeLayer(layers.streets);
 
     if (style === 'dark') {
-      if (map.hasLayer(layers.satellite)) map.removeLayer(layers.satellite);
       layers.dark.addTo(map);
-    } else {
-      if (map.hasLayer(layers.dark)) map.removeLayer(layers.dark);
+    } else if (style === 'satellite') {
       layers.satellite.addTo(map);
+    } else if (style === 'hybrid') {
+      layers.satellite.addTo(map);
+      layers.reference.addTo(map); // Add place names on top of satellite
+    } else if (style === 'streets') {
+      layers.streets.addTo(map);
     }
     setMapStyle(style);
   };
@@ -279,29 +300,73 @@ function App() {
           LIVE VIETNAM AIRSPACE
         </div>
         <div style={{ height: 20, width: 1, backgroundColor: 'rgba(255,255,255,0.1)' }}></div>
-        <button 
-          onClick={() => handleSwitchStyle(mapStyle === 'dark' ? 'satellite' : 'dark')}
-          style={{
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            color: '#5de6ff',
-            padding: '6px 14px',
-            borderRadius: 8,
-            cursor: 'pointer',
-            fontSize: 12,
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            transition: 'all 0.2s ease',
-            outline: 'none'
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(93, 230, 255, 0.15)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-        >
-          <i className={mapStyle === 'dark' ? "fa-solid fa-earth-asia" : "fa-solid fa-layer-group"}></i>
-          {mapStyle === 'dark' ? 'Bản đồ Vệ tinh' : 'Bản đồ Radar'}
-        </button>
+        <div style={{ display: 'flex', gap: 6, background: 'rgba(4,13,26,0.5)', padding: 3, borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
+          <button 
+            onClick={() => handleSwitchStyle('dark')}
+            style={{
+              background: mapStyle === 'dark' ? 'rgba(93, 230, 255, 0.2)' : 'transparent',
+              border: 'none',
+              color: mapStyle === 'dark' ? '#5de6ff' : '#587094',
+              padding: '6px 12px',
+              borderRadius: 8,
+              cursor: 'pointer',
+              fontSize: 11,
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              transition: 'all 0.2s ease',
+              outline: 'none'
+            }}
+          >
+            <i className="fa-solid fa-circle-radiation"></i>
+            Radar Tối
+          </button>
+
+          <button 
+            onClick={() => handleSwitchStyle('hybrid')}
+            style={{
+              background: mapStyle === 'hybrid' ? 'rgba(93, 230, 255, 0.2)' : 'transparent',
+              border: 'none',
+              color: mapStyle === 'hybrid' ? '#5de6ff' : '#587094',
+              padding: '6px 12px',
+              borderRadius: 8,
+              cursor: 'pointer',
+              fontSize: 11,
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              transition: 'all 0.2s ease',
+              outline: 'none'
+            }}
+          >
+            <i className="fa-solid fa-earth-asia"></i>
+            Vệ tinh (Địa danh)
+          </button>
+
+          <button 
+            onClick={() => handleSwitchStyle('streets')}
+            style={{
+              background: mapStyle === 'streets' ? 'rgba(93, 230, 255, 0.2)' : 'transparent',
+              border: 'none',
+              color: mapStyle === 'streets' ? '#5de6ff' : '#587094',
+              padding: '6px 12px',
+              borderRadius: 8,
+              cursor: 'pointer',
+              fontSize: 11,
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              transition: 'all 0.2s ease',
+              outline: 'none'
+            }}
+          >
+            <i className="fa-solid fa-map-location-dot"></i>
+            Đường phố
+          </button>
+        </div>
       </div>
 
       {/* 3. FLIGHT LIST & SEARCH SIDEBAR (LEFT) */}
