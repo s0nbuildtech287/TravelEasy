@@ -13,6 +13,18 @@ const PLANE_SELECTED_SVG = `
 </svg>
 `;
 
+const AIRPORTS = [
+  { name: 'Tân Sơn Nhất', code: 'SGN', lat: 10.8189, lng: 106.6519 },
+  { name: 'Nội Bài', code: 'HAN', lat: 21.2212, lng: 105.8072 },
+  { name: 'Đà Nẵng', code: 'DAD', lat: 16.0439, lng: 108.2003 },
+  { name: 'Changi', code: 'SIN', lat: 1.3644, lng: 103.9915 },
+  { name: 'Bangkok', code: 'BKK', lat: 13.69, lng: 100.75 },
+  { name: 'Kuala Lumpur', code: 'KUL', lat: 2.7456, lng: 101.7099 },
+  { name: 'Hong Kong', code: 'HKG', lat: 22.3080, lng: 113.9149 },
+  { name: 'Phnom Penh', code: 'PNH', lat: 11.5466, lng: 104.8442 },
+  { name: 'Vientiane', code: 'VTE', lat: 17.9883, lng: 102.5633 }
+];
+
 function App() {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -30,6 +42,13 @@ function App() {
 
   // Keep track of trails in a state/ref to draw paths
   const trailsRef = useRef({}); // { icao: [[lat, lng], ...] }
+
+  const handleGoToAirport = (ap) => {
+    const map = mapInstanceRef.current;
+    if (map) {
+      map.setView([ap.lat, ap.lng], 13); // Zoom to 13 to inspect runways!
+    }
+  };
 
   // 1. Initialize Map
   useEffect(() => {
@@ -422,6 +441,37 @@ function App() {
               color: '#587094',
               fontSize: 12
             }}></i>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#587094', marginTop: 4 }}>
+            SÂN BAY TRỌNG ĐIỂM
+          </label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {AIRPORTS.map(ap => (
+              <button 
+                key={ap.code}
+                onClick={() => handleGoToAirport(ap)}
+                style={{
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: 6,
+                  color: '#d8e3fb',
+                  padding: '4px 8px',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  outline: 'none'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(93, 230, 255, 0.1)'; e.currentTarget.style.borderColor = 'rgba(93, 230, 255, 0.3)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; }}
+              >
+                <i className="fa-solid fa-plane-departure" style={{ marginRight: 4, fontSize: 9 }}></i>
+                {ap.code}
+              </button>
+            ))}
           </div>
         </div>
 

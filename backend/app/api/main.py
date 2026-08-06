@@ -22,9 +22,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Bounds format: "north,south,west,east" for Flightradar24
-# Bounding box covers Vietnam and its surrounding maritime/land borders
-VIETNAM_BOUNDS_STR = "24.5,7.5,99.5,112.5"
+# Bounding box covers the entire Southeast Asia region (Vietnam, Laos, Cambodia, Thailand, Malaysia, Singapore, Southern China)
+VIETNAM_BOUNDS_STR = "24.5,1.0,99.0,114.0"
 
 # Memory cache to respect server limits
 flight_cache = {
