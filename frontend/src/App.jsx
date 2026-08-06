@@ -18,6 +18,7 @@ function App() {
   const mapInstanceRef = useRef(null);
   const markersRef = useRef({});      // Store active markers: { icao: marker }
   const polylinesRef = useRef({});    // Store trail polylines: { icao: polyline }
+  const tileLayersRef = useRef({});   // Store tile layers instances
   
   const [flights, setFlights] = useState([]);
   const [selectedFlight, setSelectedFlight] = useState(null);
@@ -25,6 +26,7 @@ function App() {
   const [stats, setStats] = useState({ total: 0, airborne: 0, ground: 0 });
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState('');
+  const [mapStyle, setMapStyle] = useState('dark');
 
   // Keep track of trails in a state/ref to draw paths
   const trailsRef = useRef({}); // { icao: [[lat, lng], ...] }
@@ -38,10 +40,23 @@ function App() {
       zoomControl: false // Position zoom control to top-right later
     }).setView([16.0, 108.0], 6);
 
-    window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    const darkTile = window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
       maxZoom: 20
-    }).addTo(map);
+    });
+
+    const satelliteTile = window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+      maxZoom: 18
+    });
+
+    tileLayersRef.current = {
+      dark: darkTile,
+      satellite: satelliteTile
+    };
+
+    // Add default (dark)
+    darkTile.addTo(map);
 
     window.L.control.zoom({ position: 'topright' }).addTo(map);
     mapInstanceRef.current = map;
@@ -53,6 +68,21 @@ function App() {
       }
     };
   }, []);
+
+  const handleSwitchStyle = (style) => {
+    const map = mapInstanceRef.current;
+    const layers = tileLayersRef.current;
+    if (!map || !layers.dark || !layers.satellite) return;
+
+    if (style === 'dark') {
+      if (map.hasLayer(layers.satellite)) map.removeLayer(layers.satellite);
+      layers.dark.addTo(map);
+    } else {
+      if (map.hasLayer(layers.dark)) map.removeLayer(layers.dark);
+      layers.satellite.addTo(map);
+    }
+    setMapStyle(style);
+  };
 
   // 2. Fetch Flights Loop
   useEffect(() => {
@@ -248,6 +278,30 @@ function App() {
         <div style={{ fontSize: 12, color: '#587094', fontWeight: 600 }}>
           LIVE VIETNAM AIRSPACE
         </div>
+        <div style={{ height: 20, width: 1, backgroundColor: 'rgba(255,255,255,0.1)' }}></div>
+        <button 
+          onClick={() => handleSwitchStyle(mapStyle === 'dark' ? 'satellite' : 'dark')}
+          style={{
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#5de6ff',
+            padding: '6px 14px',
+            borderRadius: 8,
+            cursor: 'pointer',
+            fontSize: 12,
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            transition: 'all 0.2s ease',
+            outline: 'none'
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(93, 230, 255, 0.15)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+        >
+          <i className={mapStyle === 'dark' ? "fa-solid fa-earth-asia" : "fa-solid fa-layer-group"}></i>
+          {mapStyle === 'dark' ? 'Bản đồ Vệ tinh' : 'Bản đồ Radar'}
+        </button>
       </div>
 
       {/* 3. FLIGHT LIST & SEARCH SIDEBAR (LEFT) */}
