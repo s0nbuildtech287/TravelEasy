@@ -131,7 +131,14 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // 3. Update Markers on Map
+  // 3. Trigger marker updates immediately when map style or selected flight changes
+  useEffect(() => {
+    if (flights.length > 0) {
+      updateMarkers(flights);
+    }
+  }, [mapStyle, selectedFlight]);
+
+  // 4. Update Markers on Map
   const updateMarkers = (currentFlights) => {
     const map = mapInstanceRef.current;
     if (!map) return;
@@ -171,8 +178,28 @@ function App() {
 
       // Check if selected
       const isSelected = selectedFlight && selectedFlight.icao === icao;
+      
+      // Determine colors based on active mapStyle to guarantee maximum contrast
+      let planeColor = '#5de6ff'; // default neon cyan for dark radar map
+      let shadowColor = 'rgba(93, 230, 255, 0.7)';
+      
+      if (isSelected) {
+        planeColor = '#ff5d8f'; // hot pink for selected
+        shadowColor = 'rgba(255, 93, 143, 0.8)';
+      } else if (mapStyle === 'hybrid') {
+        planeColor = '#eab308'; // bright yellow for dark green/blue satellite hybrid
+        shadowColor = 'rgba(234, 179, 8, 0.9)';
+      } else if (mapStyle === 'streets') {
+        planeColor = '#dc2626'; // dark red for bright gray street map
+        shadowColor = 'rgba(220, 38, 38, 0.3)';
+      }
+
+      const planeSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="${isSelected ? 36 : 32}" height="${isSelected ? 36 : 32}">
+        <path fill="${planeColor}" style="filter: drop-shadow(0px 0px 4px ${shadowColor});" d="M448 336v-40L288 192V79.2c0-26-21-47.2-47-47.2s-47 21.2-47 47.2V192L32 296v40l160-48v117.8l-42.6 32v38.2l76.6-22.8 76.6 22.8v-38.2l-42.6-32V288z"/>
+      </svg>`;
+
       const iconHtml = `<div style="transform: rotate(${heading}deg); transform-origin: center; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
-        ${isSelected ? PLANE_SELECTED_SVG : PLANE_SVG}
+        ${planeSvg}
       </div>`;
 
       const customIcon = window.L.divIcon({
@@ -182,6 +209,11 @@ function App() {
         iconAnchor: [18, 18]
       });
 
+      // Determine active trail line color
+      const trailColor = isSelected 
+        ? '#ff5d8f' 
+        : (mapStyle === 'dark' ? '#5de6ff' : mapStyle === 'hybrid' ? '#eab308' : '#dc2626');
+
       if (markersRef.current[icao]) {
         // Update existing marker position & rotation icon
         const marker = markersRef.current[icao];
@@ -190,7 +222,13 @@ function App() {
         
         // Update trail polyline
         if (polylinesRef.current[icao]) {
-          polylinesRef.current[icao].setLatLngs(trail);
+          const polyline = polylinesRef.current[icao];
+          polyline.setLatLngs(trail);
+          polyline.setStyle({
+            color: trailColor,
+            weight: isSelected ? 3 : 2,
+            opacity: isSelected ? 0.8 : 0.5
+          });
         }
       } else {
         // Create new marker
@@ -211,28 +249,13 @@ function App() {
 
         // Create trail polyline
         const polyline = window.L.polyline(trail, {
-          color: '#5de6ff',
-          weight: 2,
-          opacity: 0.5,
+          color: trailColor,
+          weight: isSelected ? 3 : 2,
+          opacity: isSelected ? 0.8 : 0.5,
           dashArray: '5, 5'
         }).addTo(map);
 
         polylinesRef.current[icao] = polyline;
-      }
-
-      // If this flight is selected, dynamically style its path
-      if (isSelected && polylinesRef.current[icao]) {
-        polylinesRef.current[icao].setStyle({
-          color: '#ff5d8f',
-          weight: 3,
-          opacity: 0.8
-        });
-      } else if (polylinesRef.current[icao]) {
-        polylinesRef.current[icao].setStyle({
-          color: '#5de6ff',
-          weight: 2,
-          opacity: 0.5
-        });
       }
     });
   };
