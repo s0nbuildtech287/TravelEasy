@@ -6,6 +6,9 @@ from fastapi.responses import FileResponse
 import os
 import time
 import httpx
+import asyncio
+import json
+import websockets
 
 app = FastAPI(
     title="TravelEasy Flight Radar",
@@ -158,6 +161,79 @@ async def get_flights():
         print(f"[ERROR] Failed to query Flightradar24: {e}")
         
     return {"flights": flight_cache["data"], "source": "cache_fallback"}
+
+# Global dictionary to store ship positions from AISStream
+ship_cache = {}
+ais_task = None
+
+async def ais_receiver_task():
+    uri = "wss://stream.aisstream.io/v0/stream"
+    api_key = "3a51e169661eaabdf468d77c959ffed4c72e9c54"
+    
+    while True:
+        try:
+            print("[AIS] Connecting to AISStream.io...", flush=True)
+            async with websockets.connect(uri, ping_interval=20, ping_timeout=20) as websocket:
+                subscribe_message = {
+                    "APIKey": api_key,
+                    "BoundingBoxes": [[[-90.0, -180.0], [90.0, 180.0]]]
+                }
+                await websocket.send(json.dumps(subscribe_message))
+                print("[AIS] Subscription message sent successfully!", flush=True)
+                
+                async for message in websocket:
+                    data = json.loads(message)
+                    metadata = data.get("MetaData", {})
+                    mmsi = str(metadata.get("MMSI"))
+                    ship_name = metadata.get("ShipName", "").strip() or f"MMSI: {mmsi}"
+                    
+                    pos_report = data.get("Message", {}).get("PositionReport", {})
+                    lat = metadata.get("latitude") # read from lowercase metadata coordinates
+                    lng = metadata.get("longitude")
+                    heading = pos_report.get("TrueHeading", 0)
+                    speed = pos_report.get("SOG", 0) # speed over ground (SOG is capitalized in JSON)
+                    
+                    if lat is not None and lng is not None:
+                        ship_cache[mmsi] = {
+                            "mmsi": mmsi,
+                            "name": ship_name,
+                            "latitude": lat,
+                            "longitude": lng,
+                            "heading": heading if heading <= 360 else 0,
+                            "speed": speed,
+                            "type": metadata.get("ShipType", 0),
+                            "last_updated": time.time()
+                        }
+                        print(f"[AIS] Parsed ship: {ship_name} (MMSI: {mmsi}) at [{lat}, {lng}]", flush=True)
+        except Exception as e:
+            print(f"[AIS] Connection failed/lost: {e}. Reconnecting in 5 seconds...", flush=True)
+            await asyncio.sleep(5)
+
+def start_ais_task():
+    global ais_task
+    if ais_task is None or ais_task.done():
+        print("[AIS] Starting background task...", flush=True)
+        ais_task = asyncio.create_task(ais_receiver_task())
+
+@app.on_event("startup")
+async def startup_event():
+    start_ais_task()
+
+@app.get("/api/ships", tags=["Ships"])
+async def get_ships():
+    # Auto-start task if uvicorn reloaded and bypassed startup
+    start_ais_task()
+    
+    # Remove ships that haven't updated in 120 seconds to keep data clean
+    now = time.time()
+    stale_mmsis = [mmsi for mmsi, ship in ship_cache.items() if now - ship["last_updated"] > 120]
+    for mmsi in stale_mmsis:
+        del ship_cache[mmsi]
+        
+    return {
+        "ships": list(ship_cache.values()),
+        "count": len(ship_cache)
+    }
 
 # Static Files serving React Frontend
 frontend_dist_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "frontend", "dist"))

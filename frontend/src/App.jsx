@@ -39,6 +39,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState('');
   const [mapStyle, setMapStyle] = useState('dark');
+  const [activeMode, setActiveMode] = useState('flights'); // 'flights' or 'ships'
+  const [ships, setShips] = useState([]);
+  const shipMarkersRef = useRef({});
 
   // Keep track of trails in a state/ref to draw paths
   const trailsRef = useRef({}); // { icao: [[lat, lng], ...] }
@@ -146,6 +149,28 @@ function App() {
 
     fetchFlights();
     const interval = setInterval(fetchFlights, 6000); // Poll every 6s
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch Ships Loop
+  useEffect(() => {
+    const fetchShips = async () => {
+      try {
+        const response = await fetch('/api/ships');
+        if (response.ok) {
+          const data = await response.json();
+          const list = data.ships || [];
+          setShips(list);
+          updateShipMarkers(list);
+        }
+      } catch (err) {
+        console.error("Error fetching ship vectors:", err);
+      }
+    };
+
+    fetchShips();
+    const interval = setInterval(fetchShips, 12000); // Ships move slow, 12s is perfect
 
     return () => clearInterval(interval);
   }, []);
@@ -279,6 +304,60 @@ function App() {
     });
   };
 
+  // 5. Update Ship Markers on Map
+  const updateShipMarkers = (currentShips) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    const currentMmsis = new Set(currentShips.map(s => s.mmsi));
+
+    // Remove old ship markers
+    Object.keys(shipMarkersRef.current).forEach(mmsi => {
+      if (!currentMmsis.has(mmsi)) {
+        map.removeLayer(shipMarkersRef.current[mmsi]);
+        delete shipMarkersRef.current[mmsi];
+      }
+    });
+
+    // Add or update ship markers
+    currentShips.forEach(ship => {
+      const { mmsi, latitude, longitude, heading, name, speed } = ship;
+
+      // Beautiful custom ship SVG pointing in its heading direction (emerald green)
+      const shipSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="24" height="24">
+        <path fill="#10b981" style="filter: drop-shadow(0px 0px 3px rgba(16, 185, 129, 0.8));" d="M256 0L128 384l128-64l128 64z"/>
+      </svg>`;
+
+      const iconHtml = `<div style="transform: rotate(${heading}deg); transform-origin: center; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">
+        ${shipSvg}
+      </div>`;
+
+      const customIcon = window.L.divIcon({
+        html: iconHtml,
+        className: 'custom-ship-icon',
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+      });
+
+      if (shipMarkersRef.current[mmsi]) {
+        const marker = shipMarkersRef.current[mmsi];
+        marker.setLatLng([latitude, longitude]);
+        marker.setIcon(customIcon);
+      } else {
+        const marker = window.L.marker([latitude, longitude], { icon: customIcon })
+          .addTo(map);
+
+        marker.bindTooltip(`<b>🚢 ${name}</b><br/>Tốc độ: ${speed} knots`, {
+          direction: 'top',
+          offset: [0, -8],
+          opacity: 0.85
+        });
+
+        shipMarkersRef.current[mmsi] = marker;
+      }
+    });
+  };
+
   const handleSelectFlight = (flight) => {
     setSelectedFlight(flight);
     
@@ -306,8 +385,31 @@ function App() {
 
   return (
     <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
-      {/* 1. MAP CONTAINER */}
-      <div ref={mapRef} style={{ width: '100%', height: '100%' }}></div>
+      {/* 1. MAP CONTAINERS */}
+      <div 
+        ref={mapRef} 
+        style={{ 
+          width: '100%', 
+          height: '100%', 
+          display: activeMode === 'flights' ? 'block' : 'none' 
+        }}
+      ></div>
+
+      {activeMode === 'ships' && (
+        <iframe 
+          src="https://www.vesselfinder.com/aismap?zoom=6&lat=16.0&lon=108.0&width=100%25&height=100%25&names=true&mmsi=0&track=true&fleet=&fleet_only=false&location_button=true&store_position=true&theme=dark"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            border: 'none',
+            zIndex: 1
+          }}
+          title="Live Marine Traffic Radar"
+        />
+      )}
 
       {/* 2. TOP HUD TITLE PANEL */}
       <div className="glass-panel" style={{
@@ -322,86 +424,136 @@ function App() {
         zIndex: 1000
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <i className="fa-solid fa-radar fa-spin" style={{ color: '#5de6ff', fontSize: 20 }}></i>
+          <i className="fa-solid fa-radar fa-spin" style={{ color: activeMode === 'flights' ? '#5de6ff' : '#10b981', fontSize: 20 }}></i>
           <span style={{ fontSize: 22, fontWeight: 800, fontFamily: 'Outfit, sans-serif' }} className="text-gradient">
-            TE Flight Radar
+            TE Radar System
           </span>
         </div>
-        <div style={{ height: 20, width: 1, backgroundColor: 'rgba(255,255,255,0.1)' }}></div>
-        <div style={{ fontSize: 12, color: '#587094', fontWeight: 600 }}>
-          LIVE VIETNAM AIRSPACE
-        </div>
-        <div style={{ height: 20, width: 1, backgroundColor: 'rgba(255,255,255,0.1)' }}></div>
-        <div style={{ display: 'flex', gap: 6, background: 'rgba(4,13,26,0.5)', padding: 3, borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
-          <button 
-            onClick={() => handleSwitchStyle('dark')}
-            style={{
-              background: mapStyle === 'dark' ? 'rgba(93, 230, 255, 0.2)' : 'transparent',
-              border: 'none',
-              color: mapStyle === 'dark' ? '#5de6ff' : '#587094',
-              padding: '6px 12px',
-              borderRadius: 8,
-              cursor: 'pointer',
-              fontSize: 11,
-              fontWeight: 700,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              transition: 'all 0.2s ease',
-              outline: 'none'
-            }}
-          >
-            <i className="fa-solid fa-circle-radiation"></i>
-            Radar Tối
-          </button>
 
-          <button 
-            onClick={() => handleSwitchStyle('hybrid')}
-            style={{
-              background: mapStyle === 'hybrid' ? 'rgba(93, 230, 255, 0.2)' : 'transparent',
-              border: 'none',
-              color: mapStyle === 'hybrid' ? '#5de6ff' : '#587094',
-              padding: '6px 12px',
-              borderRadius: 8,
-              cursor: 'pointer',
-              fontSize: 11,
-              fontWeight: 700,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              transition: 'all 0.2s ease',
-              outline: 'none'
-            }}
-          >
-            <i className="fa-solid fa-earth-asia"></i>
-            Vệ tinh (Địa danh)
-          </button>
+        <div style={{ height: 20, width: 1, backgroundColor: 'rgba(255,255,255,0.1)' }}></div>
 
+        {/* MODE SWITCHER TABS */}
+        <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.06)', padding: 3, borderRadius: 10 }}>
           <button 
-            onClick={() => handleSwitchStyle('streets')}
+            onClick={() => setActiveMode('flights')}
             style={{
-              background: mapStyle === 'streets' ? 'rgba(93, 230, 255, 0.2)' : 'transparent',
+              background: activeMode === 'flights' ? 'linear-gradient(135deg, #5de6ff, #3b82f6)' : 'transparent',
               border: 'none',
-              color: mapStyle === 'streets' ? '#5de6ff' : '#587094',
-              padding: '6px 12px',
+              color: activeMode === 'flights' ? '#040d1a' : '#d8e3fb',
+              padding: '6px 14px',
               borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 800,
               cursor: 'pointer',
-              fontSize: 11,
-              fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
-              gap: 4,
+              gap: 6,
               transition: 'all 0.2s ease',
               outline: 'none'
             }}
           >
-            <i className="fa-solid fa-map-location-dot"></i>
-            Đường phố
+            <i className="fa-solid fa-plane"></i>
+            Radar Máy Bay ({flights.length})
+          </button>
+          
+          <button 
+            onClick={() => setActiveMode('ships')}
+            style={{
+              background: activeMode === 'ships' ? 'linear-gradient(135deg, #10b981, #059669)' : 'transparent',
+              border: 'none',
+              color: activeMode === 'ships' ? '#ffffff' : '#d8e3fb',
+              padding: '6px 14px',
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              transition: 'all 0.2s ease',
+              outline: 'none'
+            }}
+          >
+            <i className="fa-solid fa-ship"></i>
+            Radar Tàu Biển (Live AIS)
           </button>
         </div>
+
+        {activeMode === 'flights' && (
+          <>
+            <div style={{ height: 20, width: 1, backgroundColor: 'rgba(255,255,255,0.1)' }}></div>
+            <div style={{ display: 'flex', gap: 6, background: 'rgba(4,13,26,0.5)', padding: 3, borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
+              <button 
+                onClick={() => handleSwitchStyle('dark')}
+                style={{
+                  background: mapStyle === 'dark' ? 'rgba(93, 230, 255, 0.2)' : 'transparent',
+                  border: 'none',
+                  color: mapStyle === 'dark' ? '#5de6ff' : '#587094',
+                  padding: '6px 12px',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  transition: 'all 0.2s ease',
+                  outline: 'none'
+                }}
+              >
+                <i className="fa-solid fa-circle-radiation"></i>
+                Radar Tối
+              </button>
+
+              <button 
+                onClick={() => handleSwitchStyle('hybrid')}
+                style={{
+                  background: mapStyle === 'hybrid' ? 'rgba(93, 230, 255, 0.2)' : 'transparent',
+                  border: 'none',
+                  color: mapStyle === 'hybrid' ? '#5de6ff' : '#587094',
+                  padding: '6px 12px',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  transition: 'all 0.2s ease',
+                  outline: 'none'
+                }}
+              >
+                <i className="fa-solid fa-earth-asia"></i>
+                Vệ tinh (Địa danh)
+              </button>
+
+              <button 
+                onClick={() => handleSwitchStyle('streets')}
+                style={{
+                  background: mapStyle === 'streets' ? 'rgba(93, 230, 255, 0.2)' : 'transparent',
+                  border: 'none',
+                  color: mapStyle === 'streets' ? '#5de6ff' : '#587094',
+                  padding: '6px 12px',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  transition: 'all 0.2s ease',
+                  outline: 'none'
+                }}
+              >
+                <i className="fa-solid fa-map-location-dot"></i>
+                Đường phố
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* 3. FLIGHT LIST & SEARCH SIDEBAR (LEFT) */}
+      {/* 3. FLIGHT LIST & SEARCH SIDEBAR (LEFT) - Only show in flights mode */}
       <div className="glass-panel" style={{
         position: 'absolute',
         top: 90,
@@ -410,7 +562,7 @@ function App() {
         maxHeight: 'calc(100vh - 240px)',
         borderRadius: 16,
         padding: 20,
-        display: 'flex',
+        display: activeMode === 'flights' ? 'flex' : 'none',
         flexDirection: 'column',
         gap: 16,
         zIndex: 1000
