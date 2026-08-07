@@ -49,6 +49,10 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState('');
   const [mapStyle, setMapStyle] = useState('dark');
+  const [weatherMode, setWeatherMode] = useState('none'); // 'none', 'rain', 'temp', 'wind'
+  const [weatherStatusText, setWeatherStatusText] = useState('');
+  const [inspectedWeather, setInspectedWeather] = useState(null); // Real-time point weather inspector
+  const weatherLayerRef = useRef(null);
   const [activeMode, setActiveMode] = useState('flights'); // 'flights' or 'ships'
   const [isNavOpen, setIsNavOpen] = useState(true); // Left vertical navigator toggle
   const [shipMapCenter, setShipMapCenter] = useState({ lat: 16.0, lon: 108.0, zoom: 6 });
@@ -101,11 +105,31 @@ function App() {
     window.L.control.zoom({ position: 'topright' }).addTo(map);
     mapInstanceRef.current = map;
 
-    return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
+    // Map click event listener to inspect real-time point weather (Temp °C & Wind Speed)
+    map.on('click', async (e) => {
+      const { lat, lng } = e.latlng;
+      try {
+        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&current_weather=true`);
+        const data = await res.json();
+        if (data.current_weather) {
+          const cw = data.current_weather;
+          setInspectedWeather({
+            lat: lat.toFixed(4),
+            lng: lng.toFixed(4),
+            temp: cw.temperature,
+            windSpeed: cw.windspeed,
+            windDir: cw.winddirection,
+            weatherCode: cw.weathercode
+          });
+        }
+      } catch (err) {
+        console.error("Error inspecting point weather:", err);
       }
+    });
+
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
     };
   }, []);
 
@@ -124,9 +148,67 @@ function App() {
     } else if (style === 'hybrid') {
       layers.hybrid.addTo(map);
     } else if (style === 'streets') {
-      layers.streets.addTo(map);
+      tileLayersRef.current[style].addTo(map);
     }
     setMapStyle(style);
+  };
+
+  // Switch Weather Radar Overlay Layer (Rain / Temp Heatmap / Wind)
+  const handleSwitchWeather = async (mode) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    // Remove existing weather layer
+    if (weatherLayerRef.current) {
+      map.removeLayer(weatherLayerRef.current);
+      weatherLayerRef.current = null;
+    }
+
+    if (mode === weatherMode) {
+      setWeatherMode('none');
+      setWeatherStatusText('');
+      return;
+    }
+
+    setWeatherMode(mode);
+    setWeatherStatusText('Đang tải dữ liệu ra-đa thời tiết thời gian thực...');
+
+    try {
+      let tileUrl = '';
+      if (mode === 'rain') {
+        const resp = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+        const data = await resp.json();
+        const pastRadar = data?.radar?.past;
+        if (pastRadar && pastRadar.length > 0) {
+          const latestPath = pastRadar[pastRadar.length - 1].path;
+          tileUrl = `https://tilecache.rainviewer.com${latestPath}/256/{z}/{x}/{y}/2/1_1.png`;
+          setWeatherStatusText('🌧️ Đang hiển thị Ra-đa Mây & Mưa (RainViewer Live)');
+        }
+      } else if (mode === 'temp') {
+        // Global Thermal Infrared Satellite Layer for temperature gradient
+        tileUrl = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/global-ir-900913/{z}/{x}/{y}.png';
+        setWeatherStatusText('🌡️ Đang hiển thị Bản đồ Nhiệt độ Vệ tinh Hồng ngoại (Global IR Thermal)');
+      } else if (mode === 'wind') {
+        // Global Radar & Wind Stream Layer
+        tileUrl = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png';
+        setWeatherStatusText('💨 Đang hiển thị Ra-đa Tốc độ Gió & Bão NEXRAD');
+      }
+
+      if (tileUrl) {
+        const weatherTile = window.L.tileLayer(tileUrl, {
+          opacity: 0.85,
+          maxZoom: 18,
+          maxNativeZoom: 12, // Prevents "Zoom level not supported" when zooming close into airports!
+          zIndex: 500
+        });
+        weatherTile.addTo(map);
+        weatherTile.bringToFront();
+        weatherLayerRef.current = weatherTile;
+      }
+    } catch (err) {
+      console.error("Error loading weather tiles:", err);
+      setWeatherStatusText('Không thể nạp dữ liệu ra-đa thời tiết. Vui lòng thử lại.');
+    }
   };
 
   // 2. Fetch Flights Loop
@@ -217,7 +299,7 @@ function App() {
 
     // Add or update markers
     currentFlights.forEach(flight => {
-      const { icao, latitude, longitude, heading, callsign } = flight;
+      const { icao, latitude, longitude, heading, callsign, altitude_ft } = flight;
       
       // Update trail coordinates
       if (!trailsRef.current[icao]) {
@@ -265,10 +347,17 @@ function App() {
         iconAnchor: [18, 18]
       });
 
-      // Determine active trail line color
-      const trailColor = isSelected 
-        ? '#ff5d8f' 
-        : (mapStyle === 'dark' ? '#5de6ff' : mapStyle === 'hybrid' ? '#eab308' : '#dc2626');
+      // Determine 3D altitude dynamic trail line color
+      let trailColor = '#5de6ff'; // Default cruising cyan (> 25,000 FT)
+      if (isSelected) {
+        trailColor = '#ff5d8f'; // Hot pink for selected flight
+      } else if (altitude_ft < 10000) {
+        trailColor = '#10b981'; // Emerald Green for low altitude (< 10,000 FT)
+      } else if (altitude_ft >= 10000 && altitude_ft < 25000) {
+        trailColor = '#f59e0b'; // Amber Orange for mid altitude (10,000 - 25,000 FT)
+      } else {
+        trailColor = '#5de6ff'; // Neon Cyan for high altitude cruising (> 25,000 FT)
+      }
 
       if (markersRef.current[icao]) {
         // Update existing marker position & rotation icon
@@ -415,10 +504,10 @@ function App() {
         }}
       ></div>
 
-      {activeMode === 'ships' && (
+      {activeMode === 'ships_vesselfinder' && (
         <iframe 
-          key={`${shipMapCenter.lat}-${shipMapCenter.lon}-${shipMapCenter.zoom}`}
-          src={`https://www.vesselfinder.com/aismap?zoom=${shipMapCenter.zoom}&lat=${shipMapCenter.lat}&lon=${shipMapCenter.lon}&width=100%25&height=100%25&names=true&mmsi=0&track=true&fleet=&fleet_only=false&location_button=true&store_position=true&theme=dark`}
+          key={`${shipMapCenter.lat}-${shipMapCenter.lon}-${shipMapCenter.zoom}-${selectedShipType}`}
+          src={`https://www.vesselfinder.com/aismap?zoom=${shipMapCenter.zoom}&lat=${shipMapCenter.lat}&lon=${shipMapCenter.lon}&type=${selectedShipType}&width=100%25&height=100%25&names=true&mmsi=0&track=true&fleet=&fleet_only=false&location_button=true&store_position=true&theme=dark`}
           style={{
             position: 'absolute',
             top: 0,
@@ -430,6 +519,105 @@ function App() {
           }}
           title="Live Marine Traffic Radar"
         />
+      )}
+
+      {/* FLOATING POINT WEATHER INSPECTOR CARD */}
+      {inspectedWeather && (
+        <div style={{
+          position: 'absolute',
+          bottom: 30,
+          right: 20,
+          background: 'rgba(4, 13, 26, 0.9)',
+          backdropFilter: 'blur(12px)',
+          border: '1px solid rgba(93, 230, 255, 0.4)',
+          borderRadius: 16,
+          padding: 16,
+          zIndex: 1000,
+          width: 260,
+          color: '#ffffff',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.6)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#5de6ff', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <i className="fa-solid fa-location-dot"></i>
+              THỜI TIẾT TẠI TỌA ĐỘ
+            </div>
+            <button 
+              onClick={() => setInspectedWeather(null)}
+              style={{ background: 'none', border: 'none', color: '#ff5d8f', fontSize: 12, cursor: 'pointer' }}
+            >
+              ✕
+            </button>
+          </div>
+
+          <div style={{ fontSize: 10, color: '#587094', marginBottom: 10 }}>
+            Vĩ độ: {inspectedWeather.lat}° | Kinh độ: {inspectedWeather.lng}°
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: 8, borderRadius: 10, border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ fontSize: 9, color: '#587094', fontWeight: 700 }}>NHIỆT ĐỘ</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#ff5d8f', marginTop: 2 }}>
+                {inspectedWeather.temp}°C
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: 8, borderRadius: 10, border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ fontSize: 9, color: '#587094', fontWeight: 700 }}>TỐC ĐỘ GIÓ</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: '#42f593', marginTop: 2 }}>
+                {inspectedWeather.windSpeed} <span style={{ fontSize: 10 }}>km/h</span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 8, fontSize: 10, color: '#d8e3fb', textAlign: 'center' }}>
+            💨 Hướng gió: {inspectedWeather.windDir}°
+          </div>
+        </div>
+      )}
+      {weatherMode !== 'none' && (
+        <div style={{
+          position: 'absolute',
+          top: 20,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(4, 13, 26, 0.85)',
+          backdropFilter: 'blur(12px)',
+          border: '1px solid rgba(93, 230, 255, 0.3)',
+          borderRadius: 20,
+          padding: '8px 16px',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          color: '#5de6ff',
+          fontSize: 12,
+          fontWeight: 700,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+        }}>
+          <i className="fa-solid fa-cloud-rain fa-bounce"></i>
+          <span>{weatherStatusText || 'Đang kích hoạt lớp radar thời tiết...'}</span>
+          <button 
+            onClick={() => handleSwitchWeather('none')}
+            style={{
+              background: 'rgba(255,255,255,0.1)',
+              border: 'none',
+              color: '#ff5d8f',
+              borderRadius: '50%',
+              width: 20,
+              height: 20,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 10,
+              marginLeft: 4
+            }}
+            title="Tắt lớp thời tiết"
+          >
+            ✕
+          </button>
+        </div>
       )}
 
       {/* 2. UNIFIED COLLAPSIBLE LEFT VERTICAL NAVIGATOR */}
@@ -581,8 +769,8 @@ function App() {
           </div>
         )}
 
-        {/* MAP STYLE SELECTOR (ONLY IN FLIGHTS MODE) */}
-        {activeMode === 'flights' && (
+        {/* MAP STYLE SELECTOR (FOR LEAFLET MODES) */}
+        {(activeMode === 'flights' || activeMode === 'ships_leaflet') && (
           isNavOpen ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#587094' }}>CHẾ ĐỘ BẢN ĐỒ</label>
@@ -646,8 +834,8 @@ function App() {
                 onClick={() => handleSwitchStyle(mapStyle === 'dark' ? 'hybrid' : mapStyle === 'hybrid' ? 'streets' : 'dark')}
                 title={`Đổi bản đồ (Hiện tại: ${mapStyle})`}
                 style={{
-                  width: 40,
-                  height: 40,
+                  width: 36,
+                  height: 36,
                   borderRadius: 10,
                   border: '1px solid rgba(255,255,255,0.1)',
                   background: 'rgba(255,255,255,0.04)',
@@ -665,10 +853,145 @@ function App() {
           )
         )}
 
+        {/* WEATHER RADAR CONTROLS (FOR LEAFLET MODES) */}
+        {(activeMode === 'flights' || activeMode === 'ships_leaflet') && (
+          isNavOpen ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#587094' }}>RADAR THỜI TIẾT & NHIỆT ĐỘ</label>
+              <div style={{ display: 'flex', gap: 4, background: 'rgba(4,13,26,0.5)', padding: 3, borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
+                <button 
+                  onClick={() => handleSwitchWeather('rain')}
+                  title="Ra-đa Mây & Mưa thời gian thực"
+                  style={{
+                    flex: 1,
+                    background: weatherMode === 'rain' ? 'rgba(93, 230, 255, 0.25)' : 'transparent',
+                    border: weatherMode === 'rain' ? '1px solid #5de6ff' : '1px solid transparent',
+                    color: weatherMode === 'rain' ? '#5de6ff' : '#d8e3fb',
+                    padding: '6px 4px',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    outline: 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  🌧️ Mây/Mưa
+                </button>
+                <button 
+                  onClick={() => handleSwitchWeather('temp')}
+                  title="Bản đồ Nhiệt độ Gradient (°C)"
+                  style={{
+                    flex: 1,
+                    background: weatherMode === 'temp' ? 'rgba(239, 68, 68, 0.25)' : 'transparent',
+                    border: weatherMode === 'temp' ? '1px solid #ef4444' : '1px solid transparent',
+                    color: weatherMode === 'temp' ? '#fca5a5' : '#d8e3fb',
+                    padding: '6px 4px',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    outline: 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  🌡️ Nhiệt độ
+                </button>
+                <button 
+                  onClick={() => handleSwitchWeather('wind')}
+                  title="Bản đồ Tốc độ & Hướng gió"
+                  style={{
+                    flex: 1,
+                    background: weatherMode === 'wind' ? 'rgba(16, 185, 129, 0.25)' : 'transparent',
+                    border: weatherMode === 'wind' ? '1px solid #10b981' : '1px solid transparent',
+                    color: weatherMode === 'wind' ? '#6ee7b7' : '#d8e3fb',
+                    padding: '6px 4px',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    outline: 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  💨 Gió
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <button 
+                onClick={() => handleSwitchWeather(weatherMode === 'none' ? 'rain' : weatherMode === 'rain' ? 'temp' : weatherMode === 'temp' ? 'wind' : 'none')}
+                title={`Thời tiết (${weatherMode})`}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: weatherMode !== 'none' ? 'rgba(93, 230, 255, 0.2)' : 'rgba(255,255,255,0.04)',
+                  color: weatherMode !== 'none' ? '#5de6ff' : '#587094',
+                  fontSize: 14,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <i className="fa-solid fa-cloud-sun-rain"></i>
+              </button>
+            </div>
+          )
+        )}
+
         {/* SEARCH & AIRPORT PRESETS & FLIGHT LIST (ONLY WHEN EXPANDED AND IN FLIGHTS MODE) */}
         {activeMode === 'flights' && isNavOpen && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', flex: 1, paddingRight: 2 }}>
             <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
+
+            {/* 3D ALTITUDE TRAIL LEGEND */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#587094' }}>
+                CHÚ GIẢI ĐỘ CAO CHẮNG BAY 3D
+              </label>
+              <div style={{
+                background: 'rgba(4,13,26,0.6)',
+                borderRadius: 10,
+                padding: '8px 10px',
+                border: '1px solid rgba(255,255,255,0.06)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                fontSize: 10,
+                color: '#d8e3fb'
+              }}>
+                <div 
+                  title="Dưới 10,000 FT (Dưới 3,050m / 3.0 km) — Giai đoạn Cất cánh hoặc Hạ cánh"
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'help', padding: '2px 4px', borderRadius: 4, transition: 'background 0.2s ease' }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.15)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 6px #10b981' }}></span>
+                  <span>&lt; 10k FT</span>
+                </div>
+                <div 
+                  title="Từ 10,000 FT - 25,000 FT (3,050m đến 7,620m / 3 - 7.6 km) — Giai đoạn Tăng độ cao hoặc Hạ độ cao"
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'help', padding: '2px 4px', borderRadius: 4, transition: 'background 0.2s ease' }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(245, 158, 11, 0.15)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', boxShadow: '0 0 6px #f59e0b' }}></span>
+                  <span>10k-25k FT</span>
+                </div>
+                <div 
+                  title="Trên 25,000 FT (Trên 7,620m / 7.6 km đến 12 km) — Giai đoạn Bay bằng Cao không (Cruising)"
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'help', padding: '2px 4px', borderRadius: 4, transition: 'background 0.2s ease' }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(93, 230, 255, 0.15)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#5de6ff', boxShadow: '0 0 6px #5de6ff' }}></span>
+                  <span>&gt; 25k FT</span>
+                </div>
+              </div>
+            </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#587094' }}>
