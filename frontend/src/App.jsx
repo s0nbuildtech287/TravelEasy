@@ -40,6 +40,7 @@ function App() {
   const [lastUpdated, setLastUpdated] = useState('');
   const [mapStyle, setMapStyle] = useState('dark');
   const [activeMode, setActiveMode] = useState('flights'); // 'flights' or 'ships'
+  const [isNavOpen, setIsNavOpen] = useState(true); // Left vertical navigator toggle
   const [ships, setShips] = useState([]);
   const shipMarkersRef = useRef({});
 
@@ -323,9 +324,17 @@ function App() {
     currentShips.forEach(ship => {
       const { mmsi, latitude, longitude, heading, name, speed } = ship;
 
-      // Beautiful custom ship SVG pointing in its heading direction (emerald green)
-      const shipSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="24" height="24">
-        <path fill="#10b981" style="filter: drop-shadow(0px 0px 3px rgba(16, 185, 129, 0.8));" d="M256 0L128 384l128-64l128 64z"/>
+      // Detailed realistic ship SVG pointing in its heading direction (emerald green)
+      const shipSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="28" height="28">
+        <g style="filter: drop-shadow(0px 0px 4px rgba(16, 185, 129, 0.9));">
+          <!-- Ship Hull & Bow -->
+          <path fill="#10b981" d="M256 16 C232 120, 192 240, 144 400 L168 448 L256 416 L344 448 L368 400 C320 240, 280 120, 256 16 Z"/>
+          <!-- Ship Bridge / Cabin -->
+          <rect x="224" y="260" width="64" height="80" rx="8" fill="#040d1a" stroke="#10b981" stroke-width="12"/>
+          <!-- Bridge Windows -->
+          <circle cx="240" cy="290" r="8" fill="#5de6ff"/>
+          <circle cx="272" cy="290" r="8" fill="#5de6ff"/>
+        </g>
       </svg>`;
 
       const iconHtml = `<div style="transform: rotate(${heading}deg); transform-origin: center; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">
@@ -411,162 +420,392 @@ function App() {
         />
       )}
 
-      {/* 2. TOP HUD TITLE PANEL */}
+      {/* 2. UNIFIED COLLAPSIBLE LEFT VERTICAL NAVIGATOR */}
       <div className="glass-panel" style={{
         position: 'absolute',
         top: 20,
         left: 20,
-        padding: '12px 24px',
-        borderRadius: 16,
+        bottom: 20,
+        width: isNavOpen ? 340 : 64,
+        borderRadius: 20,
+        padding: isNavOpen ? 20 : 12,
         display: 'flex',
-        alignItems: 'center',
+        flexDirection: 'column',
         gap: 16,
-        zIndex: 1000
+        zIndex: 1000,
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        boxSizing: 'border-box',
+        overflow: 'hidden'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <i className="fa-solid fa-radar fa-spin" style={{ color: activeMode === 'flights' ? '#5de6ff' : '#10b981', fontSize: 20 }}></i>
-          <span style={{ fontSize: 22, fontWeight: 800, fontFamily: 'Outfit, sans-serif' }} className="text-gradient">
-            TE Radar System
-          </span>
-        </div>
-
-        <div style={{ height: 20, width: 1, backgroundColor: 'rgba(255,255,255,0.1)' }}></div>
-
-        {/* MODE SWITCHER TABS */}
-        <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.06)', padding: 3, borderRadius: 10 }}>
+        {/* NAV BAR HEADER & COLLAPSE TOGGLE BUTTON */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 36 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
+            <i className="fa-solid fa-radar fa-spin" style={{ color: activeMode === 'flights' ? '#5de6ff' : '#10b981', fontSize: 22, minWidth: 22 }}></i>
+            {isNavOpen && (
+              <span style={{ fontSize: 20, fontWeight: 800, fontFamily: 'Outfit, sans-serif', whiteSpace: 'nowrap' }} className="text-gradient">
+                TE Radar System
+              </span>
+            )}
+          </div>
           <button 
-            onClick={() => setActiveMode('flights')}
+            onClick={() => setIsNavOpen(!isNavOpen)}
+            title={isNavOpen ? "Thu gọn menu" : "Mở rộng menu"}
             style={{
-              background: activeMode === 'flights' ? 'linear-gradient(135deg, #5de6ff, #3b82f6)' : 'transparent',
-              border: 'none',
-              color: activeMode === 'flights' ? '#040d1a' : '#d8e3fb',
-              padding: '6px 14px',
-              borderRadius: 8,
-              fontSize: 12,
-              fontWeight: 800,
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: '#5de6ff',
+              width: 32,
+              height: 32,
+              minWidth: 32,
+              borderRadius: 10,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
-              transition: 'all 0.2s ease',
-              outline: 'none'
-            }}
-          >
-            <i className="fa-solid fa-plane"></i>
-            Radar Máy Bay ({flights.length})
-          </button>
-          
-          <button 
-            onClick={() => setActiveMode('ships')}
-            style={{
-              background: activeMode === 'ships' ? 'linear-gradient(135deg, #10b981, #059669)' : 'transparent',
-              border: 'none',
-              color: activeMode === 'ships' ? '#ffffff' : '#d8e3fb',
-              padding: '6px 14px',
-              borderRadius: 8,
+              justifyContent: 'center',
               fontSize: 12,
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
               transition: 'all 0.2s ease',
               outline: 'none'
             }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(93, 230, 255, 0.2)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
           >
-            <i className="fa-solid fa-ship"></i>
-            Radar Tàu Biển (Live AIS)
+            <i className={isNavOpen ? "fa-solid fa-chevron-left" : "fa-solid fa-chevron-right"}></i>
           </button>
         </div>
 
+        <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
+
+        {/* MODE SWITCHER TABS (FLIGHTS / SHIPS) */}
+        {isNavOpen ? (
+          <div style={{ display: 'flex', gap: 6, background: 'rgba(255,255,255,0.04)', padding: 4, borderRadius: 12 }}>
+            <button 
+              onClick={() => setActiveMode('flights')}
+              style={{
+                flex: 1,
+                background: activeMode === 'flights' ? 'linear-gradient(135deg, #5de6ff, #3b82f6)' : 'transparent',
+                border: 'none',
+                color: activeMode === 'flights' ? '#040d1a' : '#d8e3fb',
+                padding: '8px 10px',
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                transition: 'all 0.2s ease',
+                outline: 'none'
+              }}
+            >
+              <i className="fa-solid fa-plane"></i>
+              Máy Bay ({flights.length})
+            </button>
+            
+            <button 
+              onClick={() => setActiveMode('ships')}
+              style={{
+                flex: 1,
+                background: activeMode === 'ships' ? 'linear-gradient(135deg, #10b981, #059669)' : 'transparent',
+                border: 'none',
+                color: activeMode === 'ships' ? '#ffffff' : '#d8e3fb',
+                padding: '8px 10px',
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                transition: 'all 0.2s ease',
+                outline: 'none'
+              }}
+            >
+              <i className="fa-solid fa-ship"></i>
+              Tàu Biển (Live)
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+            <button 
+              onClick={() => setActiveMode('flights')}
+              title={`Radar Máy Bay (${flights.length})`}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                border: 'none',
+                background: activeMode === 'flights' ? 'linear-gradient(135deg, #5de6ff, #3b82f6)' : 'rgba(255,255,255,0.04)',
+                color: activeMode === 'flights' ? '#040d1a' : '#d8e3fb',
+                fontSize: 16,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <i className="fa-solid fa-plane"></i>
+            </button>
+            <button 
+              onClick={() => setActiveMode('ships')}
+              title="Radar Tàu Biển (Live AIS)"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                border: 'none',
+                background: activeMode === 'ships' ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(255,255,255,0.04)',
+                color: activeMode === 'ships' ? '#ffffff' : '#d8e3fb',
+                fontSize: 16,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <i className="fa-solid fa-ship"></i>
+            </button>
+          </div>
+        )}
+
+        {/* MAP STYLE SELECTOR (ONLY IN FLIGHTS MODE) */}
         {activeMode === 'flights' && (
+          isNavOpen ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#587094' }}>CHẾ ĐỘ BẢN ĐỒ</label>
+              <div style={{ display: 'flex', gap: 4, background: 'rgba(4,13,26,0.5)', padding: 3, borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
+                <button 
+                  onClick={() => handleSwitchStyle('dark')}
+                  style={{
+                    flex: 1,
+                    background: mapStyle === 'dark' ? 'rgba(93, 230, 255, 0.2)' : 'transparent',
+                    border: 'none',
+                    color: mapStyle === 'dark' ? '#5de6ff' : '#587094',
+                    padding: '6px 4px',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    outline: 'none'
+                  }}
+                >
+                  Radar Tối
+                </button>
+                <button 
+                  onClick={() => handleSwitchStyle('hybrid')}
+                  style={{
+                    flex: 1,
+                    background: mapStyle === 'hybrid' ? 'rgba(93, 230, 255, 0.2)' : 'transparent',
+                    border: 'none',
+                    color: mapStyle === 'hybrid' ? '#5de6ff' : '#587094',
+                    padding: '6px 4px',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    outline: 'none'
+                  }}
+                >
+                  Vệ tinh
+                </button>
+                <button 
+                  onClick={() => handleSwitchStyle('streets')}
+                  style={{
+                    flex: 1,
+                    background: mapStyle === 'streets' ? 'rgba(93, 230, 255, 0.2)' : 'transparent',
+                    border: 'none',
+                    color: mapStyle === 'streets' ? '#5de6ff' : '#587094',
+                    padding: '6px 4px',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    outline: 'none'
+                  }}
+                >
+                  Đường phố
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <button 
+                onClick={() => handleSwitchStyle(mapStyle === 'dark' ? 'hybrid' : mapStyle === 'hybrid' ? 'streets' : 'dark')}
+                title={`Đổi bản đồ (Hiện tại: ${mapStyle})`}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'rgba(255,255,255,0.04)',
+                  color: '#5de6ff',
+                  fontSize: 14,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <i className="fa-solid fa-layer-group"></i>
+              </button>
+            </div>
+          )
+        )}
+
+        {/* SEARCH & AIRPORT PRESETS & FLIGHT LIST (ONLY WHEN EXPANDED AND IN FLIGHTS MODE) */}
+        {activeMode === 'flights' && isNavOpen && (
           <>
-            <div style={{ height: 20, width: 1, backgroundColor: 'rgba(255,255,255,0.1)' }}></div>
-            <div style={{ display: 'flex', gap: 6, background: 'rgba(4,13,26,0.5)', padding: 3, borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
-              <button 
-                onClick={() => handleSwitchStyle('dark')}
-                style={{
-                  background: mapStyle === 'dark' ? 'rgba(93, 230, 255, 0.2)' : 'transparent',
-                  border: 'none',
-                  color: mapStyle === 'dark' ? '#5de6ff' : '#587094',
-                  padding: '6px 12px',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  transition: 'all 0.2s ease',
-                  outline: 'none'
-                }}
-              >
-                <i className="fa-solid fa-circle-radiation"></i>
-                Radar Tối
-              </button>
+            <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
 
-              <button 
-                onClick={() => handleSwitchStyle('hybrid')}
-                style={{
-                  background: mapStyle === 'hybrid' ? 'rgba(93, 230, 255, 0.2)' : 'transparent',
-                  border: 'none',
-                  color: mapStyle === 'hybrid' ? '#5de6ff' : '#587094',
-                  padding: '6px 12px',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  transition: 'all 0.2s ease',
-                  outline: 'none'
-                }}
-              >
-                <i className="fa-solid fa-earth-asia"></i>
-                Vệ tinh (Địa danh)
-              </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#587094' }}>
+                TÌM KIẾM CHUYẾN BAY
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input 
+                  type="text" 
+                  placeholder="Nhập Callsign hoặc Airline..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="input-well"
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px 8px 34px',
+                    fontSize: 12,
+                    boxSizing: 'border-box'
+                  }}
+                />
+                <i className="fa-solid fa-magnifying-glass" style={{
+                  position: 'absolute',
+                  left: 10,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#587094',
+                  fontSize: 11
+                }}></i>
+              </div>
+            </div>
 
-              <button 
-                onClick={() => handleSwitchStyle('streets')}
-                style={{
-                  background: mapStyle === 'streets' ? 'rgba(93, 230, 255, 0.2)' : 'transparent',
-                  border: 'none',
-                  color: mapStyle === 'streets' ? '#5de6ff' : '#587094',
-                  padding: '6px 12px',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  transition: 'all 0.2s ease',
-                  outline: 'none'
-                }}
-              >
-                <i className="fa-solid fa-map-location-dot"></i>
-                Đường phố
-              </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#587094' }}>
+                SÂN BAY TRỌNG ĐIỂM
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {AIRPORTS.map(ap => (
+                  <button 
+                    key={ap.code}
+                    onClick={() => handleGoToAirport(ap)}
+                    style={{
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(255,255,255,0.06)',
+                      borderRadius: 6,
+                      color: '#d8e3fb',
+                      padding: '3px 7px',
+                      fontSize: 10,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      outline: 'none'
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(93, 230, 255, 0.1)'; e.currentTarget.style.borderColor = 'rgba(93, 230, 255, 0.3)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; }}
+                  >
+                    <i className="fa-solid fa-plane-departure" style={{ marginRight: 3, fontSize: 8 }}></i>
+                    {ap.code}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
+
+            {/* FLIGHT LIST */}
+            <div style={{ 
+              overflowY: 'auto', 
+              flex: 1, 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: 8,
+              paddingRight: 4
+            }}>
+              {loading && flights.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 20, color: '#587094', fontSize: 12 }}>
+                  <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }}></i>
+                  Đang tải dữ liệu...
+                </div>
+              ) : filteredFlights.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 20, color: '#587094', fontSize: 12 }}>
+                  Không tìm thấy chuyến bay nào
+                </div>
+              ) : (
+                filteredFlights.map(flight => (
+                  <div 
+                    key={flight.icao} 
+                    onClick={() => handleSelectFlight(flight)}
+                    style={{
+                      padding: 10,
+                      borderRadius: 10,
+                      background: selectedFlight && selectedFlight.icao === flight.icao 
+                        ? 'rgba(93, 230, 255, 0.15)' 
+                        : 'rgba(255,255,255,0.02)',
+                      border: selectedFlight && selectedFlight.icao === flight.icao
+                        ? '1px solid rgba(93, 230, 255, 0.4)'
+                        : '1px solid rgba(255,255,255,0.04)',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#ffffff', letterSpacing: '0.02em' }}>
+                        {flight.callsign}
+                      </div>
+                      <div style={{ fontSize: 10, color: '#587094', marginTop: 1 }}>
+                        {flight.airline}
+                      </div>
+                    </div>
+                    
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 11, color: '#5de6ff', fontWeight: 600 }}>
+                        {flight.altitude_ft.toLocaleString()} FT
+                      </div>
+                      <div style={{ fontSize: 9, color: '#587094', marginTop: 1 }}>
+                        {flight.speed_kmh} KM/H
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* SCAN STATISTICS */}
+            <div style={{
+              background: 'rgba(255,255,255,0.02)',
+              borderRadius: 12,
+              padding: 10,
+              border: '1px solid rgba(255,255,255,0.04)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, textAlign: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: '#5de6ff' }}>{stats.total}</div>
+                  <div style={{ fontSize: 8, color: '#587094', fontWeight: 700 }}>TỔNG SỐ</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: '#42f593' }}>{stats.airborne}</div>
+                  <div style={{ fontSize: 8, color: '#587094', fontWeight: 700 }}>ĐANG BAY</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: '#ffb35d' }}>{stats.ground}</div>
+                  <div style={{ fontSize: 8, color: '#587094', fontWeight: 700 }}>DƯỚI ĐẤT</div>
+                </div>
+              </div>
             </div>
           </>
         )}
       </div>
-
-      {/* 3. FLIGHT LIST & SEARCH SIDEBAR (LEFT) - Only show in flights mode */}
-      <div className="glass-panel" style={{
-        position: 'absolute',
-        top: 90,
-        left: 20,
-        width: 320,
-        maxHeight: 'calc(100vh - 240px)',
-        borderRadius: 16,
-        padding: 20,
-        display: activeMode === 'flights' ? 'flex' : 'none',
-        flexDirection: 'column',
-        gap: 16,
-        zIndex: 1000
-      }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', color: '#587094' }}>
             TÌM KIẾM CHUYẾN BAY
@@ -626,101 +865,6 @@ function App() {
             ))}
           </div>
         </div>
-
-        <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
-
-        {/* FLIGHT LIST */}
-        <div style={{ 
-          overflowY: 'auto', 
-          flex: 1, 
-          display: 'flex', 
-          flexDirection: 'column', 
-          gap: 10,
-          paddingRight: 4
-        }}>
-          {loading && flights.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 20, color: '#587094' }}>
-              <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 8 }}></i>
-              Đang tải dữ liệu...
-            </div>
-          ) : filteredFlights.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 20, color: '#587094', fontSize: 13 }}>
-              Không tìm thấy chuyến bay nào
-            </div>
-          ) : (
-            filteredFlights.map(flight => (
-              <div 
-                key={flight.icao} 
-                onClick={() => handleSelectFlight(flight)}
-                style={{
-                  padding: 12,
-                  borderRadius: 12,
-                  background: selectedFlight && selectedFlight.icao === flight.icao 
-                    ? 'rgba(93, 230, 255, 0.15)' 
-                    : 'rgba(255,255,255,0.02)',
-                  border: selectedFlight && selectedFlight.icao === flight.icao
-                    ? '1px solid rgba(93, 230, 255, 0.4)'
-                    : '1px solid rgba(255,255,255,0.04)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: '#ffffff', letterSpacing: '0.02em' }}>
-                    {flight.callsign}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#587094', marginTop: 2 }}>
-                    {flight.airline}
-                  </div>
-                </div>
-                
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 12, color: '#5de6ff', fontWeight: 600 }}>
-                    {flight.altitude_ft.toLocaleString()} FT
-                  </div>
-                  <div style={{ fontSize: 10, color: '#587094', marginTop: 2 }}>
-                    {flight.speed_kmh} KM/H
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* 4. SCAN STATISTICS BAR (BOTTOM LEFT) */}
-      <div className="glass-panel" style={{
-        position: 'absolute',
-        bottom: 20,
-        left: 20,
-        width: 320,
-        borderRadius: 16,
-        padding: '16px 20px',
-        zIndex: 1000
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#587094' }}>THỐNG KÊ QUÉT</span>
-          <span style={{ fontSize: 11, color: '#587094' }}>Cập nhật: {lastUpdated || '---'}</span>
-        </div>
-        
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-          <div style={{ flex: 1, textAlign: 'center', background: 'rgba(255,255,255,0.02)', padding: 10, borderRadius: 10 }}>
-            <div style={{ fontSize: 20, fontWeight: 800, color: '#5de6ff' }}>{stats.total}</div>
-            <div style={{ fontSize: 9, color: '#587094', marginTop: 2, fontWeight: 600 }}>TỔNG SỐ</div>
-          </div>
-          <div style={{ flex: 1, textAlign: 'center', background: 'rgba(255,255,255,0.02)', padding: 10, borderRadius: 10 }}>
-            <div style={{ fontSize: 20, fontWeight: 800, color: '#42f593' }}>{stats.airborne}</div>
-            <div style={{ fontSize: 9, color: '#587094', marginTop: 2, fontWeight: 600 }}>ĐANG BAY</div>
-          </div>
-          <div style={{ flex: 1, textAlign: 'center', background: 'rgba(255,255,255,0.02)', padding: 10, borderRadius: 10 }}>
-            <div style={{ fontSize: 20, fontWeight: 800, color: '#ffb35d' }}>{stats.ground}</div>
-            <div style={{ fontSize: 9, color: '#587094', marginTop: 2, fontWeight: 600 }}>DƯỚI ĐẤT</div>
-          </div>
-        </div>
-      </div>
 
       {/* 5. FLIGHT INFO PANEL (RIGHT SIDEBAR) */}
       {selectedFlight && (
