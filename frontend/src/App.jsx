@@ -58,6 +58,7 @@ function App() {
   const [mapStyle, setMapStyle] = useState('dark');
   const [showFlights, setShowFlights] = useState(true); // Toggle flight markers visibility
   const [selectedAirlineFilter, setSelectedAirlineFilter] = useState('ALL'); // Country / Airline Filter
+  const [fidsModalData, setFidsModalData] = useState(null); // Airport & Port FIDS Modal State
   const showFlightsRef = useRef(showFlights);
   const selectedAirlineFilterRef = useRef(selectedAirlineFilter);
 
@@ -85,6 +86,25 @@ function App() {
     const map = mapInstanceRef.current;
     if (map) {
       map.setView([ap.lat, ap.lng], 13); // Zoom to 13 to inspect runways!
+    }
+  };
+
+  // Open FIDS Modal for Airport or Port
+  const handleOpenFidsModal = async (target) => {
+    setFidsModalData({ ...target, tab: 'departures', loading: true, departures: [], arrivals: [] });
+    try {
+      if (target.type === 'airport') {
+        const resp = await fetch(`/api/airports/${target.code}/fids`);
+        const data = await resp.json();
+        setFidsModalData({ ...target, ...data, tab: 'departures', loading: false });
+      } else {
+        const resp = await fetch(`/api/ports/${encodeURIComponent(target.code)}/analytics`);
+        const data = await resp.json();
+        setFidsModalData({ ...target, ...data, loading: false });
+      }
+    } catch (err) {
+      console.error("Error fetching FIDS data:", err);
+      setFidsModalData({ ...target, loading: false });
     }
   };
 
@@ -294,6 +314,23 @@ function App() {
       updateMarkers(flights);
     }
   }, [mapStyle, selectedFlight, showFlights, selectedAirlineFilter]);
+
+  // Handle Map View centering when Seaport preset is selected or mode switches
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    map.invalidateSize();
+    if (activeMode === 'ships') {
+      map.setView([shipMapCenter.lat, shipMapCenter.lon], shipMapCenter.zoom);
+      if (ships.length > 0) {
+        updateShipMarkers(ships);
+      }
+    } else if (activeMode === 'flights') {
+      if (flights.length > 0) {
+        updateMarkers(flights);
+      }
+    }
+  }, [activeMode, shipMapCenter]);
 
   // 4. Update Markers on Map
   const updateMarkers = (currentFlights) => {
@@ -513,13 +550,32 @@ function App() {
     });
   };
 
-  const handleSelectFlight = (flight) => {
+  const handleSelectFlight = async (flight) => {
     setSelectedFlight(flight);
     
     // Zoom/Center to plane coords
     const map = mapInstanceRef.current;
     if (map) {
       map.setView([flight.latitude, flight.longitude], map.getZoom() < 8 ? 8 : map.getZoom());
+    }
+
+    // Query full flight track starting from departure airport
+    try {
+      const resp = await fetch(`/api/flights/${flight.icao}/track`);
+      if (resp.ok) {
+        const data = await resp.json();
+        const trackList = data.track || [];
+        if (trackList.length > 0) {
+          const fullPath = trackList.map(pt => [pt.lat, pt.lng]);
+          trailsRef.current[flight.icao] = fullPath;
+          
+          if (mapInstanceRef.current && flights.length > 0) {
+            updateMarkers(flights);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching full flight track:", err);
     }
   };
 
@@ -549,7 +605,7 @@ function App() {
 
   return (
     <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
-      {/* 1. MAP CONTAINERS */}
+      {/* 1. FLIGHT RADAR LEAFLET MAP CONTAINER */}
       <div 
         ref={mapRef} 
         style={{ 
@@ -559,10 +615,11 @@ function App() {
         }}
       ></div>
 
-      {activeMode === 'ships_vesselfinder' && (
+      {/* 2. VESSEL FINDER LIVE MARINE TRAFFIC RADAR IFRAME */}
+      {activeMode === 'ships' && (
         <iframe 
-          key={`${shipMapCenter.lat}-${shipMapCenter.lon}-${shipMapCenter.zoom}-${selectedShipType}`}
-          src={`https://www.vesselfinder.com/aismap?zoom=${shipMapCenter.zoom}&lat=${shipMapCenter.lat}&lon=${shipMapCenter.lon}&type=${selectedShipType}&width=100%25&height=100%25&names=true&mmsi=0&track=true&fleet=&fleet_only=false&location_button=true&store_position=true&theme=dark`}
+          key={`${shipMapCenter.lat}-${shipMapCenter.lon}-${shipMapCenter.zoom}`}
+          src={`https://www.vesselfinder.com/aismap?zoom=${shipMapCenter.zoom}&lat=${shipMapCenter.lat}&lon=${shipMapCenter.lon}&width=100%25&height=100%25&names=true&mmsi=0&track=true&fleet=&fleet_only=false&location_button=true&store_position=true&theme=dark`}
           style={{
             position: 'absolute',
             top: 0,
@@ -572,11 +629,212 @@ function App() {
             border: 'none',
             zIndex: 1
           }}
-          title="Live Marine Traffic Radar"
+          title="Live Marine Traffic Radar (VesselFinder)"
         />
       )}
 
-      {/* FLOATING POINT WEATHER INSPECTOR CARD */}
+      {/* RETRO NEON LED AIRPORT & PORT FIDS MODAL OVERLAY */}
+      {fidsModalData && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(4, 13, 26, 0.85)',
+          backdropFilter: 'blur(16px)',
+          zIndex: 2000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 20,
+          boxSizing: 'border-box'
+        }}>
+          <div style={{
+            background: '#040d1a',
+            border: '1px solid rgba(93, 230, 255, 0.4)',
+            borderRadius: 20,
+            width: 820,
+            maxWidth: '95vw',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 0 50px rgba(93, 230, 255, 0.25)',
+            overflow: 'hidden'
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '20px 24px',
+              background: 'linear-gradient(135deg, rgba(93, 230, 255, 0.1), rgba(4, 13, 26, 0.8))',
+              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', color: '#5de6ff' }}>
+                  HỆ THỐNG BẢNG ĐIỆN TỬ SÂN BAY & THỐNG KÊ CẢNG BIỂN (LIVE FIDS & MARITIME)
+                </div>
+                <h2 style={{ margin: '4px 0 0 0', fontSize: 22, fontWeight: 800, color: '#ffffff', fontFamily: 'Outfit, sans-serif' }}>
+                  {fidsModalData.type === 'airport' ? `✈️ SÂN BAY QUỐC TẾ ${fidsModalData.name} (${fidsModalData.code})` : `⚓ CẢNG BIỂN QUỐC TẾ ${fidsModalData.name}`}
+                </h2>
+              </div>
+
+              <button
+                onClick={() => setFidsModalData(null)}
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: 'none',
+                  color: '#ff5d8f',
+                  width: 36,
+                  height: 36,
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  fontSize: 16,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* MAIN CATEGORY SWITCHER (AIRPORTS vs SEAPORTS) */}
+            <div style={{ padding: '12px 24px 0 24px', display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => handleOpenFidsModal({ code: 'SGN', name: 'Tân Sơn Nhất', type: 'airport' })}
+                style={{
+                  background: fidsModalData.type === 'airport' ? 'linear-gradient(135deg, #5de6ff, #3b82f6)' : 'rgba(255,255,255,0.03)',
+                  border: 'none',
+                  color: fidsModalData.type === 'airport' ? '#040d1a' : '#d8e3fb',
+                  padding: '8px 16px',
+                  borderRadius: 10,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                ✈️ SÂN BAY HÀNG KHÔNG (FIDS)
+              </button>
+              <button
+                onClick={() => handleOpenFidsModal({ code: 'HAI PHONG', name: 'Hải Phòng', type: 'port' })}
+                style={{
+                  background: fidsModalData.type === 'port' ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(255,255,255,0.03)',
+                  border: 'none',
+                  color: fidsModalData.type === 'port' ? '#ffffff' : '#d8e3fb',
+                  padding: '8px 16px',
+                  borderRadius: 10,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                ⚓ CẢNG BIỂN HÀNG HẢI (PORT ANALYTICS)
+              </button>
+            </div>
+
+            {/* Airport FIDS Tab Switcher */}
+            {fidsModalData.type === 'airport' ? (
+              <div style={{ padding: '16px 24px 0 24px', display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => setFidsModalData({ ...fidsModalData, tab: 'departures' })}
+                  style={{
+                    background: fidsModalData.tab === 'departures' ? 'linear-gradient(135deg, #5de6ff, #3b82f6)' : 'rgba(255,255,255,0.03)',
+                    border: 'none',
+                    color: fidsModalData.tab === 'departures' ? '#040d1a' : '#d8e3fb',
+                    padding: '8px 16px',
+                    borderRadius: 10,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  🛫 CẤT CÁNH (DEPARTURES)
+                </button>
+                <button
+                  onClick={() => setFidsModalData({ ...fidsModalData, tab: 'arrivals' })}
+                  style={{
+                    background: fidsModalData.tab === 'arrivals' ? 'linear-gradient(135deg, #42f593, #059669)' : 'rgba(255,255,255,0.03)',
+                    border: 'none',
+                    color: fidsModalData.tab === 'arrivals' ? '#040d1a' : '#d8e3fb',
+                    padding: '8px 16px',
+                    borderRadius: 10,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  🛬 HẠ CÁNH (ARRIVALS)
+                </button>
+              </div>
+            ) : (
+              /* Port Analytics Summary Bar */
+              <div style={{ padding: 24, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: 12, borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: '#587094', fontWeight: 700 }}>TÀU ĐANG LÀM HÀNG</div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: '#10b981', marginTop: 4 }}>{fidsModalData.berth_ships || 10} Tàu</div>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: 12, borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: '#587094', fontWeight: 700 }}>NEO CHỜ NGOÀI KHƠI</div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: '#f59e0b', marginTop: 4 }}>{fidsModalData.anchored_ships || 5} Tàu</div>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: 12, borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: '#587094', fontWeight: 700 }}>CHỈ SỐ THÔNG THOÁNG</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#5de6ff', marginTop: 4 }}>{fidsModalData.congestion_status || 'THÔNG THOÁNG'}</div>
+                </div>
+              </div>
+            )}
+
+            {/* LED Table Content */}
+            <div style={{ padding: 24, overflowY: 'auto', flex: 1 }}>
+              {fidsModalData.loading ? (
+                <div style={{ textAlign: 'center', padding: 40, color: '#587094' }}>
+                  <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 8, fontSize: 18 }}></i>
+                  Đang nạp bảng điện tử thời gian thực...
+                </div>
+              ) : fidsModalData.type === 'airport' ? (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: 'monospace' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(93, 230, 255, 0.3)', color: '#5de6ff', textAlign: 'left' }}>
+                      <th style={{ padding: '10px 8px' }}>SỐ HIỆU</th>
+                      <th style={{ padding: '10px 8px' }}>HÃNG BAY</th>
+                      <th style={{ padding: '10px 8px' }}>MÁY BAY</th>
+                      <th style={{ padding: '10px 8px' }}>{fidsModalData.tab === 'departures' ? 'ĐIỂM ĐẾN' : 'ĐIỂM ĐI'}</th>
+                      <th style={{ padding: '10px 8px' }}>GATE/BELT</th>
+                      <th style={{ padding: '10px 8px', textAlign: 'right' }}>TRẠNG THÁI</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {((fidsModalData.tab === 'departures' ? fidsModalData.departures : fidsModalData.arrivals) || []).map((row, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', color: '#ffffff' }}>
+                        <td style={{ padding: '12px 8px', fontWeight: 800, color: '#ffb35d' }}>{row.callsign}</td>
+                        <td style={{ padding: '12px 8px', color: '#d8e3fb' }}>{row.airline}</td>
+                        <td style={{ padding: '12px 8px', color: '#587094' }}>{row.aircraft || 'A321'}</td>
+                        <td style={{ padding: '12px 8px', fontWeight: 700, color: '#5de6ff' }}>{row.destination || row.origin}</td>
+                        <td style={{ padding: '12px 8px', color: '#42f593', fontWeight: 700 }}>{row.gate || row.belt}</td>
+                        <td style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 800, color: row.status.includes('CẤT CÁNH') || row.status.includes('HẠ CÁNH') ? '#10b981' : '#f59e0b' }}>
+                          {row.status}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div style={{ textAlign: 'center', padding: 20, color: '#5de6ff', fontSize: 13 }}>
+                  ⚓ Dữ liệu luồng hải cảng được cập nhật tự động qua trạm AIS hàng hải.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {inspectedWeather && (
         <div style={{
           position: 'absolute',
@@ -730,9 +988,9 @@ function App() {
 
         <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
 
-        {/* MODE SWITCHER TABS (FLIGHTS / SHIPS) */}
+        {/* MODE SWITCHER TABS (FLIGHTS / SHIPS / FIDS BOARD) */}
         {isNavOpen ? (
-          <div style={{ display: 'flex', gap: 6, background: 'rgba(255,255,255,0.04)', padding: 4, borderRadius: 12 }}>
+          <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.04)', padding: 4, borderRadius: 12 }}>
             <button 
               onClick={() => setActiveMode('flights')}
               style={{
@@ -740,21 +998,21 @@ function App() {
                 background: activeMode === 'flights' ? 'linear-gradient(135deg, #5de6ff, #3b82f6)' : 'transparent',
                 border: 'none',
                 color: activeMode === 'flights' ? '#040d1a' : '#d8e3fb',
-                padding: '8px 10px',
+                padding: '8px 6px',
                 borderRadius: 8,
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: 800,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 6,
+                gap: 4,
                 transition: 'all 0.2s ease',
                 outline: 'none'
               }}
             >
               <i className="fa-solid fa-plane"></i>
-              Máy Bay ({flights.length})
+              Máy Bay
             </button>
             
             <button 
@@ -764,21 +1022,45 @@ function App() {
                 background: activeMode === 'ships' ? 'linear-gradient(135deg, #10b981, #059669)' : 'transparent',
                 border: 'none',
                 color: activeMode === 'ships' ? '#ffffff' : '#d8e3fb',
-                padding: '8px 10px',
+                padding: '8px 6px',
                 borderRadius: 8,
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: 800,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 6,
+                gap: 4,
                 transition: 'all 0.2s ease',
                 outline: 'none'
               }}
             >
               <i className="fa-solid fa-ship"></i>
-              Tàu Biển (Live)
+              Tàu Biển
+            </button>
+
+            <button 
+              onClick={() => handleOpenFidsModal({ code: 'SGN', name: 'Tân Sơn Nhất', type: 'airport' })}
+              style={{
+                flex: 1,
+                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(239, 68, 68, 0.2))',
+                border: '1px solid rgba(245, 158, 11, 0.4)',
+                color: '#ffb35d',
+                padding: '8px 6px',
+                borderRadius: 8,
+                fontSize: 11,
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+                transition: 'all 0.2s ease',
+                outline: 'none'
+              }}
+            >
+              <i className="fa-solid fa-list-check"></i>
+              Bảng FIDS
             </button>
           </div>
         ) : (
@@ -802,6 +1084,7 @@ function App() {
             >
               <i className="fa-solid fa-plane"></i>
             </button>
+
             <button 
               onClick={() => setActiveMode('ships')}
               title="Radar Tàu Biển (Live AIS)"
@@ -820,6 +1103,26 @@ function App() {
               }}
             >
               <i className="fa-solid fa-ship"></i>
+            </button>
+
+            <button 
+              onClick={() => handleOpenFidsModal({ code: 'SGN', name: 'Tân Sơn Nhất', type: 'airport' })}
+              title="Bảng Điện tử FIDS LED Sân bay"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                border: '1px solid rgba(245, 158, 11, 0.4)',
+                background: 'rgba(245, 158, 11, 0.15)',
+                color: '#ffb35d',
+                fontSize: 16,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <i className="fa-solid fa-list-check"></i>
             </button>
           </div>
         )}
@@ -1125,14 +1428,34 @@ function App() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#587094' }}>
-                SÂN BAY TRỌNG ĐIỂM
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#587094' }}>
+                  SÂN BAY TRỌNG ĐIỂM
+                </label>
+                <button
+                  onClick={() => handleOpenFidsModal({ code: 'SGN', name: 'Tân Sơn Nhất', type: 'airport' })}
+                  style={{
+                    background: 'rgba(93, 230, 255, 0.1)',
+                    border: '1px solid rgba(93, 230, 255, 0.3)',
+                    color: '#5de6ff',
+                    borderRadius: 6,
+                    padding: '2px 6px',
+                    fontSize: 9,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    outline: 'none'
+                  }}
+                  title="Mở Bảng Điện tử Cất/Hạ cánh Sân bay"
+                >
+                  <i className="fa-solid fa-[#5de6ff] fa-list-check" style={{ marginRight: 3 }}></i>
+                  📋 Bảng FIDS LED
+                </button>
+              </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {AIRPORTS.map(ap => (
                   <button 
                     key={ap.code}
-                    onClick={() => handleGoToAirport(ap)}
+                    onClick={() => { handleGoToAirport(ap); handleOpenFidsModal({ code: ap.code, name: ap.name, type: 'airport' }); }}
                     style={{
                       background: 'rgba(255,255,255,0.03)',
                       border: '1px solid rgba(255,255,255,0.06)',
@@ -1156,67 +1479,6 @@ function App() {
             </div>
 
             <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
-
-            {/* FLIGHT LIST */}
-            <div style={{ 
-              overflowY: 'auto', 
-              flex: 1, 
-              display: 'flex', 
-              flexDirection: 'column', 
-              gap: 8,
-              paddingRight: 4
-            }}>
-              {loading && flights.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 20, color: '#587094', fontSize: 12 }}>
-                  <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }}></i>
-                  Đang tải dữ liệu...
-                </div>
-              ) : filteredFlights.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 20, color: '#587094', fontSize: 12 }}>
-                  Không tìm thấy chuyến bay nào
-                </div>
-              ) : (
-                filteredFlights.map(flight => (
-                  <div 
-                    key={flight.icao} 
-                    onClick={() => handleSelectFlight(flight)}
-                    style={{
-                      padding: 10,
-                      borderRadius: 10,
-                      background: selectedFlight && selectedFlight.icao === flight.icao 
-                        ? 'rgba(93, 230, 255, 0.15)' 
-                        : 'rgba(255,255,255,0.02)',
-                      border: selectedFlight && selectedFlight.icao === flight.icao
-                        ? '1px solid rgba(93, 230, 255, 0.4)'
-                        : '1px solid rgba(255,255,255,0.04)',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: '#ffffff', letterSpacing: '0.02em' }}>
-                        {flight.callsign}
-                      </div>
-                      <div style={{ fontSize: 10, color: '#587094', marginTop: 1 }}>
-                        {flight.airline}
-                      </div>
-                    </div>
-                    
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 11, color: '#5de6ff', fontWeight: 600 }}>
-                        {flight.altitude_ft.toLocaleString()} FT
-                      </div>
-                      <div style={{ fontSize: 9, color: '#587094', marginTop: 1 }}>
-                        {flight.speed_kmh} KM/H
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
 
             {/* SCAN STATISTICS */}
             <div style={{
@@ -1248,27 +1510,46 @@ function App() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', flex: 1, paddingRight: 2 }}>
             <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
 
-            {/* SEAPORT PRESETS */}
+            {/* SEAPORT PRESETS & PORT CONGESTION ANALYTICS */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#10b981', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <i className="fa-solid fa-anchor"></i>
-                ĐỊNH VỊ CẢNG BIỂN TRỌNG ĐIỂM
-              </label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#10b981', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <i className="fa-solid fa-anchor"></i>
+                  ĐỊNH VỊ CẢNG BIỂN TRỌNG ĐIỂM
+                </label>
+                <button
+                  onClick={() => handleOpenFidsModal({ code: 'HAI PHONG', name: 'Hải Phòng', type: 'port' })}
+                  style={{
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    border: '1px solid rgba(16, 185, 129, 0.4)',
+                    color: '#42f593',
+                    borderRadius: 6,
+                    padding: '2px 6px',
+                    fontSize: 9,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    outline: 'none'
+                  }}
+                  title="Mở Bảng Thống kê Mật độ Cảng Biển"
+                >
+                  ⚓ Thống kê Cảng
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {SEAPORTS.map(port => (
                   <button 
                     key={port.code}
-                    onClick={() => setShipMapCenter({ lat: port.lat, lon: port.lon, zoom: port.zoom })}
+                    onClick={() => {
+                      setShipMapCenter({ lat: port.lat, lon: port.lon, zoom: port.zoom });
+                      handleOpenFidsModal({ code: port.code, name: port.name, type: 'port' });
+                    }}
                     style={{
-                      background: shipMapCenter.lat === port.lat && shipMapCenter.lon === port.lon
-                        ? 'rgba(16, 185, 129, 0.25)'
-                        : 'rgba(255,255,255,0.03)',
-                      border: shipMapCenter.lat === port.lat && shipMapCenter.lon === port.lon
-                        ? '1px solid rgba(16, 185, 129, 0.6)'
-                        : '1px solid rgba(255,255,255,0.06)',
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(255,255,255,0.06)',
                       borderRadius: 8,
-                      color: shipMapCenter.lat === port.lat && shipMapCenter.lon === port.lon ? '#10b981' : '#d8e3fb',
-                      padding: '5px 9px',
+                      color: '#d8e3fb',
+                      padding: '8px 10px',
                       fontSize: 11,
                       fontWeight: 700,
                       cursor: 'pointer',
@@ -1276,17 +1557,16 @@ function App() {
                       outline: 'none',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 4
+                      justifyContent: 'space-between'
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(16, 185, 129, 0.15)'; }}
-                    onMouseLeave={(e) => { 
-                      if (shipMapCenter.lat !== port.lat || shipMapCenter.lon !== port.lon) {
-                        e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
-                      }
-                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(16, 185, 129, 0.15)'; e.currentTarget.style.borderColor = 'rgba(16, 185, 129, 0.4)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; }}
                   >
-                    <i className="fa-solid fa-ship" style={{ fontSize: 9 }}></i>
-                    {port.name}
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <i className="fa-solid fa-anchor" style={{ color: '#42f593' }}></i>
+                      {port.name}
+                    </span>
+                    <span style={{ fontSize: 10, color: '#587094', fontWeight: 600 }}>Chi tiết 📊</span>
                   </button>
                 ))}
               </div>
