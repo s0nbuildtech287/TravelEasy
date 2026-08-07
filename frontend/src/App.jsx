@@ -59,6 +59,8 @@ function App() {
   const [showFlights, setShowFlights] = useState(true); // Toggle flight markers visibility
   const [selectedAirlineFilter, setSelectedAirlineFilter] = useState('ALL'); // Country / Airline Filter
   const [fidsModalData, setFidsModalData] = useState(null); // Airport & Port FIDS Modal State
+  const [aviationAlerts, setAviationAlerts] = useState([]); // Emergency Squawk & Holding Pattern Alerts
+  const [isAlertsListExpanded, setIsAlertsListExpanded] = useState(false); // Expandable Alerts List toggle
   const showFlightsRef = useRef(showFlights);
   const selectedAirlineFilterRef = useRef(selectedAirlineFilter);
 
@@ -259,7 +261,9 @@ function App() {
         if (response.ok) {
           const data = await response.json();
           const list = data.flights || [];
+          const alertsList = data.alerts || [];
           setFlights(list);
+          setAviationAlerts(alertsList);
           
           // Calculate stats
           const airborne = list.filter(f => !f.on_ground).length;
@@ -633,7 +637,112 @@ function App() {
         />
       )}
 
-      {/* RETRO NEON LED AIRPORT & PORT FIDS MODAL OVERLAY */}
+      {/* LIVE AVIATION EMERGENCY & HOLDING PATTERN ALERTS PANEL (TOP RIGHT / BESIDE FLIGHT CARD) */}
+      {aviationAlerts.length > 0 && (
+        <div style={{
+          position: 'absolute',
+          top: 20,
+          right: selectedFlight ? 380 : 70,
+          zIndex: 1500,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
+          gap: 8,
+          maxWidth: 360,
+          transition: 'right 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+        }}>
+          {/* Top Header Toggle Pill */}
+          <div 
+            onClick={() => setIsAlertsListExpanded(!isAlertsListExpanded)}
+            style={{
+              background: aviationAlerts.some(a => a.level === 'CRITICAL') ? 'rgba(239, 68, 68, 0.92)' : 'rgba(4, 13, 26, 0.92)',
+              backdropFilter: 'blur(16px)',
+              border: aviationAlerts.some(a => a.level === 'CRITICAL') ? '1px solid #ef4444' : '1px solid rgba(93, 230, 255, 0.5)',
+              borderRadius: 20,
+              padding: '6px 14px',
+              color: '#ffffff',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              transition: 'all 0.2s ease'
+            }}
+            title="Nhấp để Mở rộng / Thu gọn Danh sách Cảnh báo"
+          >
+            <i className="fa-solid fa-triangle-exclamation fa-beat-fade" style={{ color: aviationAlerts.some(a => a.level === 'CRITICAL') ? '#ffb35d' : '#5de6ff' }}></i>
+            <span style={{ fontSize: 11, fontWeight: 800 }}>
+              CẢNH BÁO KHẨN CẤP ({aviationAlerts.length})
+            </span>
+            <i className={isAlertsListExpanded ? "fa-solid fa-chevron-up" : "fa-solid fa-chevron-down"} style={{ fontSize: 10, color: '#5de6ff' }}></i>
+          </div>
+
+          {/* Expanded Alerts Scrollable List */}
+          {isAlertsListExpanded && (
+            <div style={{
+              background: 'rgba(4, 13, 26, 0.95)',
+              backdropFilter: 'blur(16px)',
+              border: '1px solid rgba(93, 230, 255, 0.3)',
+              borderRadius: 16,
+              padding: 12,
+              width: 340,
+              maxHeight: 380,
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              boxShadow: '0 12px 40px rgba(0,0,0,0.8)'
+            }}>
+              {aviationAlerts.map(alert => {
+                const targetFlight = flights.find(f => f.callsign === alert.callsign || f.icao.toLowerCase() === alert.id.split('-').pop().toLowerCase());
+                return (
+                  <div
+                    key={alert.id}
+                    style={{
+                      background: alert.level === 'CRITICAL' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(93, 230, 255, 0.05)',
+                      border: alert.level === 'CRITICAL' ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(93, 230, 255, 0.2)',
+                      borderRadius: 12,
+                      padding: 10
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: alert.level === 'CRITICAL' ? '#ef4444' : '#5de6ff' }}>
+                        {alert.title}
+                      </span>
+                      {targetFlight && (
+                        <button
+                          onClick={() => handleSelectFlight(targetFlight)}
+                          style={{
+                            background: 'linear-gradient(135deg, #5de6ff, #3b82f6)',
+                            border: 'none',
+                            color: '#040d1a',
+                            borderRadius: 6,
+                            padding: '3px 8px',
+                            fontSize: 10,
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            outline: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4
+                          }}
+                          title="Click để xem & định vị ngay máy bay này trên bản đồ"
+                        >
+                          <i className="fa-solid fa-crosshairs"></i>
+                          {alert.callsign}
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 10, color: '#d8e3fb', lineHeight: '1.4' }}>
+                      {alert.desc}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
       {fidsModalData && (
         <div style={{
           position: 'fixed',

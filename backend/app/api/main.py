@@ -148,16 +148,58 @@ async def get_flights():
                 
                 print(f"[DEBUG] Parsed flights count: {len(flights)}")
                 
+                # Evaluate Emergency Alerts & Holding Pattern Detections
+                alerts = []
+                for f in flights:
+                    squawk = str(f.get("squawk", ""))
+                    if squawk == "7700":
+                        alerts.append({
+                            "id": f"sq-7700-{f['icao']}",
+                            "level": "CRITICAL",
+                            "type": "SQUAWK_7700",
+                            "callsign": f["callsign"],
+                            "airline": f["airline"],
+                            "title": "🚨 SQUAWK 7700: Sự cố Khẩn cấp Kỹ thuật",
+                            "desc": f"Chuyến bay {f['callsign']} ({f['airline']}) vừa phát tín hiệu khẩn cấp 7700!"
+                        })
+                    elif squawk == "7600":
+                        alerts.append({
+                            "id": f"sq-7600-{f['icao']}",
+                            "level": "WARNING",
+                            "type": "SQUAWK_7600",
+                            "callsign": f["callsign"],
+                            "airline": f["airline"],
+                            "title": "📻 SQUAWK 7600: Mất liên lạc Vô tuyến",
+                            "desc": f"Chuyến bay {f['callsign']} mất tín hiệu liên lạc vô tuyến!"
+                        })
+                        
+                    # Holding pattern detection near SGN or HAN
+                    lat, lng = f["latitude"], f["longitude"]
+                    alt = f["altitude_ft"]
+                    dist_sgn = math.sqrt((lat - 10.8189)**2 + (lng - 106.6519)**2)
+                    dist_han = math.sqrt((lat - 21.2212)**2 + (lng - 105.8072)**2)
+                    
+                    if (dist_sgn < 0.18 or dist_han < 0.18) and (3000 <= alt <= 14000):
+                        ap_name = "Tân Sơn Nhất (SGN)" if dist_sgn < dist_han else "Nội Bài (HAN)"
+                        alerts.append({
+                            "id": f"holding-{f['icao']}",
+                            "level": "INFO",
+                            "type": "HOLDING_PATTERN",
+                            "callsign": f["callsign"],
+                            "airline": f["airline"],
+                            "title": f"🔄 BAY VÒNG LƯỢN CHỜ HẠ CÁNH ({ap_name})",
+                            "desc": f"Chuyến bay {f['callsign']} đang lượn vòng trên không chờ đường băng tại {ap_name}!"
+                        })
+
                 # Only overwrite cache if we successfully retrieved active flights.
-                # If the API returns 0 flights (due to rate limiting or connection drop),
-                # preserve the last cached flight vectors so the map remains populated.
                 if len(flights) > 0:
                     flight_cache["data"] = flights
+                    flight_cache["alerts"] = alerts
                     flight_cache["last_fetched"] = now
-                    return {"flights": flights, "source": "flightradar24"}
+                    return {"flights": flights, "alerts": alerts, "source": "flightradar24"}
                 else:
                     print("[DEBUG] Flightradar24 returned 0 flights. Retaining previous cached data.")
-                    return {"flights": flight_cache["data"], "source": "cache_fallback"}
+                    return {"flights": flight_cache["data"], "alerts": flight_cache.get("alerts", []), "source": "cache_fallback"}
     except Exception as e:
         print(f"[ERROR] Failed to query Flightradar24: {e}")
         return {"flights": flight_cache.get("data", []), "source": "cache_fallback"}
