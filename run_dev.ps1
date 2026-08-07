@@ -7,4 +7,4 @@ npm run build
 
 Write-Host "=== 2. KHOI CHAY FASTAPI BACKEND ===" -ForegroundColor Green
 cd "$PSScriptRoot\backend"
-..\venv\Scripts\python -m uvicorn app.api.main:app --reload --host 0.0.0.0 --port 8000
+..\venv\Scripts\python -m uvicorn app.api.main:app --reload --host 0.0.0.0 --port 8080

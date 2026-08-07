@@ -517,6 +517,11 @@ async def serve_frontend(catchall: str):
     if catchall.startswith("api/") or catchall.startswith("docs") or catchall.startswith("openapi.json"):
         return {"error": "Not Found"}
         
+    # Check if the requested file exists in the frontend dist root (e.g. favicon.svg)
+    file_path = os.path.join(frontend_dist_path, catchall)
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+        
     index_file = os.path.join(frontend_dist_path, "index.html")
     if os.path.exists(index_file):
         return FileResponse(index_file)
