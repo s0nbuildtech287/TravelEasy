@@ -416,7 +416,7 @@ ais_task = None
 
 async def ais_receiver_task():
     uri = "wss://stream.aisstream.io/v0/stream"
-    api_key = "3a51e169661eaabdf468d77c959ffed4c72e9c54"
+    api_key = os.getenv("AIS_API_KEY", "3a51e169661eaabdf468d77c959ffed4c72e9c54")
     
     while True:
         try:
@@ -505,7 +505,7 @@ assets_path = os.path.join(frontend_dist_path, "assets")
 if os.path.exists(assets_path):
     app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
 
-@app.get("/", tags=["Static"])
+@app.api_route("/", methods=["GET", "HEAD"], tags=["Static"])
 async def serve_root():
     index_file = os.path.join(frontend_dist_path, "index.html")
     if os.path.exists(index_file):
