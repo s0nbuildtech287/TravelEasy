@@ -67,9 +67,15 @@ function App() {
   const [selectedAtc, setSelectedAtc] = useState({ id: 'sgn_twr', code: 'SGN', freq: '118.700 MHz', name: 'Tân Sơn Nhất Tower', stream_url: '/api/atc/stream/sgn_twr' });
   const [isAtcPlaying, setIsAtcPlaying] = useState(false);
   const [atcVolume, setAtcVolume] = useState(0.8);
+  const [showAtcScanner, setShowAtcScanner] = useState(false); // Toggle visibility for Live ATC Radio Scanner widget
   const audioRef = useRef(null);
   const canvasRef = useRef(null);
   const animFrameRef = useRef(null);
+  
+  // 3D Cockpit View Simulator States
+  const [isCockpitView, setIsCockpitView] = useState(false);
+  const [cockpitFlight, setCockpitFlight] = useState(null);
+
   const showFlightsRef = useRef(showFlights);
   const selectedAirlineFilterRef = useRef(selectedAirlineFilter);
 
@@ -311,7 +317,20 @@ function App() {
       .catch(err => console.error("Error loading ATC channels:", err));
   }, []);
 
-  // Web Audio Canvas Spectrum Visualizer Loop
+  // 3D Cockpit Camera Tracking Loop
+  useEffect(() => {
+    if (isCockpitView && cockpitFlight && mapInstanceRef.current) {
+      const map = mapInstanceRef.current;
+      const updated = flights.find(f => f.icao === cockpitFlight.icao) || cockpitFlight;
+      
+      // Update camera center to follow aircraft coordinates
+      map.flyTo([updated.latitude, updated.longitude], 15, {
+        animate: true,
+        duration: 1.5
+      });
+    }
+  }, [isCockpitView, flights, cockpitFlight]);
+
   useEffect(() => {
     if (!canvasRef.current) return;
     const canvas = canvasRef.current;
@@ -716,6 +735,173 @@ function App() {
 
   return (
     <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
+      {/* 3D PILOT COCKPIT HUD OVERLAY (FULL SCREEN) */}
+      {isCockpitView && cockpitFlight && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          zIndex: 2500,
+          pointerEvents: 'none',
+          boxShadow: 'inset 0 0 100px rgba(0,0,0,0.9)',
+          border: '12px solid rgba(10, 22, 40, 0.85)'
+        }}>
+          {/* Top Pilot Cockpit Header Bar */}
+          <div style={{
+            position: 'absolute',
+            top: 20,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(4, 13, 26, 0.92)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid #10b981',
+            borderRadius: 30,
+            padding: '8px 24px',
+            color: '#ffffff',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            pointerEvents: 'auto',
+            boxShadow: '0 0 30px rgba(16, 185, 129, 0.5)'
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 900, color: '#10b981', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <i className="fa-solid fa-plane" style={{ fontSize: 14 }}></i>
+              👨‍✈️ COCKPIT HUD - {cockpitFlight.callsign} ({cockpitFlight.airline})
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#5de6ff' }}>
+              <i className="fa-solid fa-location-dot" style={{ marginRight: 4 }}></i>
+              {cockpitFlight.destination ? `ĐÍCH: ${cockpitFlight.destination}` : 'ĐANG HẠ CÁNH SÂN BAY'}
+            </div>
+            <button
+              onClick={() => setIsCockpitView(false)}
+              style={{
+                background: 'rgba(239, 68, 68, 0.2)',
+                border: '1px solid #ef4444',
+                color: '#ef4444',
+                borderRadius: 20,
+                padding: '4px 12px',
+                fontSize: 11,
+                fontWeight: 800,
+                cursor: 'pointer',
+                outline: 'none'
+              }}
+            >
+              <i className="fa-solid fa-xmark" style={{ marginRight: 4 }}></i>
+              THOÁT BUỒNG LÁI
+            </button>
+          </div>
+
+          {/* Left HUD Altitude Tape (Positioned beside Left Navigator) */}
+          <div style={{
+            position: 'absolute',
+            left: isNavOpen ? 300 : 80,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            background: 'rgba(4, 13, 26, 0.92)',
+            border: '1px solid #10b981',
+            borderRadius: 12,
+            padding: '12px 16px',
+            color: '#10b981',
+            fontFamily: 'monospace',
+            textAlign: 'center',
+            boxShadow: '0 0 20px rgba(16, 185, 129, 0.3)',
+            transition: 'left 0.3s ease'
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: '#5de6ff', marginBottom: 4 }}>ALTITUDE</div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: '#ffffff' }}>
+              {(cockpitFlight.altitude_ft || 0).toLocaleString()} <span style={{ fontSize: 12, color: '#10b981' }}>FT</span>
+            </div>
+            <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
+              ~ {Math.round((cockpitFlight.altitude_ft || 0) * 0.3048).toLocaleString()} m
+            </div>
+          </div>
+
+          {/* Right HUD Airspeed Tape (Positioned beside Right Flight Details Card) */}
+          {(() => {
+            const speedKmh = cockpitFlight.speed_kmh || (cockpitFlight.speed_kt ? Math.round(cockpitFlight.speed_kt * 1.852) : (cockpitFlight.ground_speed ? Math.round(cockpitFlight.ground_speed * 1.852) : 0));
+            const speedKnots = Math.round(speedKmh / 1.852);
+            return (
+              <div style={{
+                position: 'absolute',
+                right: selectedFlight ? 380 : 40,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'rgba(4, 13, 26, 0.92)',
+                border: '1px solid #10b981',
+                borderRadius: 12,
+                padding: '12px 16px',
+                color: '#10b981',
+                fontFamily: 'monospace',
+                textAlign: 'center',
+                boxShadow: '0 0 20px rgba(16, 185, 129, 0.3)',
+                transition: 'right 0.3s ease'
+              }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: '#5de6ff', marginBottom: 4 }}>AIRSPEED</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: '#ffffff' }}>
+                  {speedKmh} <span style={{ fontSize: 12, color: '#10b981' }}>KM/H</span>
+                </div>
+                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
+                  ~ {speedKnots} knots
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Center Artificial Horizon Pitch Ladder Crosshair */}
+          <div style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 200,
+            height: 200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            {/* Center Crosshair Ring */}
+            <div style={{
+              width: 60,
+              height: 60,
+              border: '2px solid #10b981',
+              borderRadius: '50%',
+              position: 'relative',
+              boxShadow: '0 0 15px rgba(16, 185, 129, 0.6)'
+            }}>
+              <div style={{ position: 'absolute', top: '50%', left: -15, width: 15, height: 2, background: '#10b981' }}></div>
+              <div style={{ position: 'absolute', top: '50%', right: -15, width: 15, height: 2, background: '#10b981' }}></div>
+              <div style={{ position: 'absolute', top: -15, left: '50%', width: 2, height: 15, background: '#10b981' }}></div>
+              <div style={{ position: 'absolute', bottom: -15, left: '50%', width: 2, height: 15, background: '#10b981' }}></div>
+            </div>
+          </div>
+
+          {/* Bottom Compass Heading Ribbon */}
+          <div style={{
+            position: 'absolute',
+            bottom: 30,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(4, 13, 26, 0.85)',
+            border: '1px solid #10b981',
+            borderRadius: 20,
+            padding: '6px 20px',
+            color: '#10b981',
+            fontFamily: 'monospace',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            boxShadow: '0 0 20px rgba(16, 185, 129, 0.3)'
+          }}>
+            <i className="fa-solid fa-compass" style={{ color: '#5de6ff' }}></i>
+            <span style={{ fontSize: 12, fontWeight: 800, color: '#ffffff' }}>
+              HEADING: {cockpitFlight.heading}°
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 1. FLIGHT RADAR LEAFLET MAP CONTAINER */}
       <div 
         ref={mapRef} 
@@ -1204,80 +1390,160 @@ function App() {
 
         <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
 
-        {/* MODE SWITCHER TABS (FLIGHTS / SHIPS / FIDS BOARD) */}
+        {/* TOP MODE SWITCHER TABS GRID */}
         {isNavOpen ? (
-          <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.04)', padding: 4, borderRadius: 12 }}>
-            <button 
-              onClick={() => setActiveMode('flights')}
-              style={{
-                flex: 1,
-                background: activeMode === 'flights' ? 'linear-gradient(135deg, #5de6ff, #3b82f6)' : 'transparent',
-                border: 'none',
-                color: activeMode === 'flights' ? '#040d1a' : '#d8e3fb',
-                padding: '8px 6px',
-                borderRadius: 8,
-                fontSize: 11,
-                fontWeight: 800,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 4,
-                transition: 'all 0.2s ease',
-                outline: 'none'
-              }}
-            >
-              <i className="fa-solid fa-plane"></i>
-              Máy Bay
-            </button>
-            
-            <button 
-              onClick={() => setActiveMode('ships')}
-              style={{
-                flex: 1,
-                background: activeMode === 'ships' ? 'linear-gradient(135deg, #10b981, #059669)' : 'transparent',
-                border: 'none',
-                color: activeMode === 'ships' ? '#ffffff' : '#d8e3fb',
-                padding: '8px 6px',
-                borderRadius: 8,
-                fontSize: 11,
-                fontWeight: 800,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 4,
-                transition: 'all 0.2s ease',
-                outline: 'none'
-              }}
-            >
-              <i className="fa-solid fa-ship"></i>
-              Tàu Biển
-            </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 4, background: 'rgba(4,13,26,0.5)', padding: 4, borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
+              <button 
+                onClick={() => setActiveMode('flights')}
+                style={{
+                  flex: 1,
+                  background: activeMode === 'flights' ? 'linear-gradient(135deg, #5de6ff, #3b82f6)' : 'transparent',
+                  border: 'none',
+                  color: activeMode === 'flights' ? '#040d1a' : '#d8e3fb',
+                  padding: '7px 4px',
+                  borderRadius: 8,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 3,
+                  outline: 'none'
+                }}
+              >
+                <i className="fa-solid fa-plane"></i>
+                Máy Bay
+              </button>
 
-            <button 
-              onClick={() => handleOpenFidsModal({ code: 'SGN', name: 'Tân Sơn Nhất', type: 'airport' })}
-              style={{
-                flex: 1,
-                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(239, 68, 68, 0.2))',
-                border: '1px solid rgba(245, 158, 11, 0.4)',
-                color: '#ffb35d',
-                padding: '8px 6px',
-                borderRadius: 8,
-                fontSize: 11,
-                fontWeight: 800,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 4,
-                transition: 'all 0.2s ease',
-                outline: 'none'
-              }}
-            >
-              <i className="fa-solid fa-list-check"></i>
-              Bảng FIDS
-            </button>
+              <button 
+                onClick={() => setActiveMode('ships')}
+                style={{
+                  flex: 1,
+                  background: activeMode === 'ships' ? 'linear-gradient(135deg, #10b981, #059669)' : 'transparent',
+                  border: 'none',
+                  color: activeMode === 'ships' ? '#ffffff' : '#d8e3fb',
+                  padding: '7px 4px',
+                  borderRadius: 8,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 3,
+                  outline: 'none'
+                }}
+              >
+                <i className="fa-solid fa-ship"></i>
+                Tàu Biển
+              </button>
+
+              <button 
+                onClick={() => handleOpenFidsModal({ code: 'SGN', name: 'Tân Sơn Nhất', type: 'airport' })}
+                style={{
+                  flex: 1,
+                  background: 'rgba(245, 158, 11, 0.15)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  color: '#ffb35d',
+                  padding: '7px 4px',
+                  borderRadius: 8,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 3,
+                  outline: 'none'
+                }}
+              >
+                <i className="fa-solid fa-list-check"></i>
+                FIDS
+              </button>
+            </div>
+
+            {/* SECOND MODULES ROW: ALERTS, ATC RADIO, & COCKPIT 3D */}
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button 
+                onClick={() => setIsAlertsListExpanded(!isAlertsListExpanded)}
+                style={{
+                  flex: 1,
+                  background: aviationAlerts.length > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.03)',
+                  border: aviationAlerts.length > 0 ? '1px solid #ef4444' : '1px solid rgba(255,255,255,0.06)',
+                  color: aviationAlerts.length > 0 ? '#ef4444' : '#d8e3fb',
+                  padding: '7px 2px',
+                  borderRadius: 8,
+                  fontSize: 9,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 3,
+                  outline: 'none'
+                }}
+                title="Mở Bảng Cảnh Báo Khẩn Cấp & Bay Vòng"
+              >
+                <i className="fa-solid fa-triangle-exclamation" style={{ color: '#ffb35d' }}></i>
+                Cảnh Báo ({aviationAlerts.length})
+              </button>
+
+              <button 
+                onClick={() => setShowAtcScanner(!showAtcScanner)}
+                style={{
+                  flex: 1,
+                  background: showAtcScanner ? 'linear-gradient(135deg, rgba(93, 230, 255, 0.3), rgba(59, 130, 246, 0.3))' : 'rgba(93, 230, 255, 0.12)',
+                  border: showAtcScanner ? '1px solid #5de6ff' : '1px solid rgba(93, 230, 255, 0.3)',
+                  color: '#5de6ff',
+                  padding: '7px 2px',
+                  borderRadius: 8,
+                  fontSize: 9,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 3,
+                  outline: 'none'
+                }}
+                title="Mở/Tắt Đài Phát thanh Điều hành Không lưu Live ATC"
+              >
+                <i className="fa-solid fa-radio"></i>
+                Đài ATC
+              </button>
+
+              <button 
+                onClick={() => {
+                  const flightToView = selectedFlight || (flights.length > 0 ? flights[0] : null);
+                  if (flightToView) {
+                    setCockpitFlight(flightToView);
+                    setIsCockpitView(true);
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  background: isCockpitView ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(16, 185, 129, 0.15)',
+                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                  color: '#10b981',
+                  padding: '7px 2px',
+                  borderRadius: 8,
+                  fontSize: 9,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 3,
+                  outline: 'none'
+                }}
+                title="Kích hoạt Góc nhìn Buồng lái Phi công 3D"
+              >
+                <i className="fa-solid fa-plane-arrival"></i>
+                Buồng Lái 3D
+              </button>
+            </div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
@@ -1339,6 +1605,72 @@ function App() {
               }}
             >
               <i className="fa-solid fa-list-check"></i>
+            </button>
+
+            <button 
+              onClick={() => setIsAlertsListExpanded(!isAlertsListExpanded)}
+              title={`Cảnh Báo Khẩn Cấp (${aviationAlerts.length})`}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                background: 'rgba(239, 68, 68, 0.15)',
+                color: '#ef4444',
+                fontSize: 16,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <i className="fa-solid fa-triangle-exclamation"></i>
+            </button>
+
+            <button 
+              onClick={() => setShowAtcScanner(!showAtcScanner)}
+              title="Đài Phát thanh Điều hành Không lưu Live ATC"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                border: showAtcScanner ? '1px solid #5de6ff' : '1px solid rgba(93, 230, 255, 0.4)',
+                background: showAtcScanner ? 'rgba(93, 230, 255, 0.25)' : 'rgba(93, 230, 255, 0.15)',
+                color: '#5de6ff',
+                fontSize: 16,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <i className="fa-solid fa-radio"></i>
+            </button>
+
+            <button 
+              onClick={() => {
+                const flightToView = selectedFlight || (flights.length > 0 ? flights[0] : null);
+                if (flightToView) {
+                  setCockpitFlight(flightToView);
+                  setIsCockpitView(true);
+                }
+              }}
+              title="Góc nhìn Buồng lái Phi công 3D"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                border: '1px solid rgba(16, 185, 129, 0.4)',
+                background: 'rgba(16, 185, 129, 0.15)',
+                color: '#10b981',
+                fontSize: 16,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <i className="fa-solid fa-plane-arrival"></i>
             </button>
           </div>
         )}
@@ -1522,6 +1854,35 @@ function App() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', flex: 1, paddingRight: 2 }}>
             <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
 
+            {/* 3D COCKPIT VIEW ACTIVATION BUTTON */}
+            <button
+              onClick={() => {
+                setCockpitFlight(selectedFlight);
+                setIsCockpitView(true);
+              }}
+              style={{
+                width: '100%',
+                background: 'linear-gradient(135deg, #10b981, #059669)',
+                border: 'none',
+                borderRadius: 12,
+                padding: '10px 14px',
+                color: '#ffffff',
+                fontSize: 12,
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                marginTop: 12,
+                boxShadow: '0 0 20px rgba(16, 185, 129, 0.4)',
+                outline: 'none'
+              }}
+            >
+              <i className="fa-solid fa-plane-arrival" style={{ fontSize: 14 }}></i>
+              👨‍✈️ GÓC NHÂN PHI CÔNG 3D (COCKPIT VIEW)
+            </button>
+
             {/* 3D ALTITUDE TRAIL LEGEND */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#587094' }}>
@@ -1694,23 +2055,21 @@ function App() {
               </div>
             </div>
 
-            <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
-
-            {/* RETRO COCKPIT LIVE ATC RADIO SCANNER WIDGET (FLOATING BOTTOM RIGHT) */}
+      {/* RETRO COCKPIT LIVE ATC RADIO SCANNER WIDGET (FLOATING BOTTOM LEFT BESIDE NAVIGATOR) */}
       <div style={{
         position: 'absolute',
         bottom: 30,
-        right: inspectedWeather ? 300 : 20,
-        background: 'rgba(4, 13, 26, 0.92)',
+        left: isNavOpen ? 340 : 100,
+        background: 'rgba(4, 13, 26, 0.95)',
         backdropFilter: 'blur(16px)',
         border: '1px solid rgba(93, 230, 255, 0.4)',
         borderRadius: 18,
         padding: '12px 16px',
-        zIndex: 1000,
+        zIndex: 1200,
         width: 270,
         color: '#ffffff',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
-        transition: 'right 0.3s ease'
+        boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
+        transition: 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
       }}>
         {/* Hidden Audio Element */}
         <audio 
@@ -1996,6 +2355,169 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* RETRO COCKPIT LIVE ATC RADIO SCANNER WIDGET (ONLY SHOWN WHEN USER CLICKS NAVIGATOR ATC ICON) */}
+      {showAtcScanner && (
+        <div style={{
+          position: 'absolute',
+          bottom: 30,
+          left: isNavOpen ? 370 : 94,
+          background: 'rgba(4, 13, 26, 0.95)',
+          backdropFilter: 'blur(16px)',
+          border: '1px solid rgba(93, 230, 255, 0.4)',
+          borderRadius: 18,
+          padding: '12px 16px',
+          zIndex: 1200,
+          width: 270,
+          color: '#ffffff',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
+          transition: 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+        }}>
+          {/* Hidden Audio Element */}
+          <audio 
+            ref={audioRef} 
+            src={selectedAtc.url || selectedAtc.stream_url} 
+            preload="none"
+            onEnded={() => setIsAtcPlaying(false)}
+          />
+
+          {/* Radio Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: '#5de6ff', letterSpacing: '0.08em', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <i className="fa-solid fa-radio"></i>
+              LIVE ATC RADIO SCANNER
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: isAtcPlaying ? '#10b981' : '#f59e0b',
+                boxShadow: isAtcPlaying ? '0 0 8px #10b981' : 'none'
+              }}></span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: isAtcPlaying ? '#10b981' : '#f59e0b', marginRight: 4 }}>
+                {isAtcPlaying ? "LIVE" : "SQUELCH"}
+              </span>
+              <button 
+                onClick={() => setShowAtcScanner(false)}
+                title="Đóng Bảng Live ATC Scanner"
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: 'none',
+                  color: '#94a3b8',
+                  width: 20,
+                  height: 20,
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 10,
+                  outline: 'none'
+                }}
+              >
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+          </div>
+
+          {/* LED Digital Amber Frequency Screen */}
+          <div style={{
+            background: 'radial-gradient(circle at center, #1b1605 0%, #080601 100%)',
+            border: '1px solid rgba(245, 158, 11, 0.6)',
+            borderRadius: 10,
+            padding: '8px 12px',
+            marginBottom: 10,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            boxShadow: 'inset 0 0 10px rgba(245, 158, 11, 0.2)'
+          }}>
+            <div>
+              <div style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: 900, color: '#ffb35d', letterSpacing: '0.05em', textShadow: '0 0 8px rgba(245, 158, 11, 0.8)' }}>
+                {selectedAtc.freq}
+              </div>
+              <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>
+                {selectedAtc.name}
+              </div>
+            </div>
+            {/* Audio Visualizer Wave Canvas */}
+            <canvas 
+              ref={canvasRef} 
+              width="70" 
+              height="28" 
+              style={{ borderRadius: 4, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(245, 158, 11, 0.2)' }}
+            />
+          </div>
+
+          {/* Channel Selection Pills */}
+          <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+            {atcChannels.map(ch => (
+              <button
+                key={ch.id}
+                onClick={() => handleSelectAtcChannel(ch)}
+                style={{
+                  flex: 1,
+                  background: selectedAtc.code === ch.code ? 'rgba(93, 230, 255, 0.2)' : 'rgba(255,255,255,0.03)',
+                  border: selectedAtc.code === ch.code ? '1px solid #5de6ff' : '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: 6,
+                  color: selectedAtc.code === ch.code ? '#5de6ff' : '#d8e3fb',
+                  padding: '4px 2px',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  outline: 'none',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {ch.code}
+              </button>
+            ))}
+          </div>
+
+          {/* Controls: Play/Pause & Volume Slider */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              onClick={handleToggleAtcPlay}
+              style={{
+                background: isAtcPlaying ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #10b981, #059669)',
+                border: 'none',
+                color: '#ffffff',
+                borderRadius: 8,
+                padding: '6px 14px',
+                fontSize: 11,
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                outline: 'none',
+                boxShadow: isAtcPlaying ? '0 0 12px rgba(239, 68, 68, 0.5)' : '0 0 12px rgba(16, 185, 129, 0.5)'
+              }}
+            >
+              <i className={isAtcPlaying ? "fa-solid fa-pause" : "fa-solid fa-play"}></i>
+              {isAtcPlaying ? "TẮT SÓNG" : "NGHE ATC"}
+            </button>
+
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <i className="fa-solid fa-volume-high" style={{ fontSize: 10, color: '#587094' }}></i>
+              <input 
+                type="range" 
+                min="0" 
+                max="1" 
+                step="0.05"
+                value={atcVolume}
+                onChange={(e) => {
+                  const vol = parseFloat(e.target.value);
+                  setAtcVolume(vol);
+                  if (audioRef.current) audioRef.current.volume = vol;
+                }}
+                style={{ width: '100%', accentColor: '#5de6ff', cursor: 'pointer' }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 5. FLIGHT INFO PANEL (RIGHT SIDEBAR) */}
       {selectedFlight && (
