@@ -1,0 +1,9 @@
+.git
+.gitignore
+venv/
+frontend/node_modules/
+frontend/dist/
+backend/__pycache__/
+backend/app/rag_store/
+**/__pycache__
+.env
