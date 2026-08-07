@@ -25,6 +25,16 @@ const AIRPORTS = [
   { name: 'Vientiane', code: 'VTE', lat: 17.9883, lng: 102.5633 }
 ];
 
+const SEAPORTS = [
+  { name: 'Toàn Biển Đông', code: 'EAST SEA', lat: 16.0, lon: 108.0, zoom: 6 },
+  { name: 'Cảng Hải Phòng', code: 'HAI PHONG', lat: 20.86, lon: 106.68, zoom: 11 },
+  { name: 'Cái Mép - Vũng Tàu', code: 'VUNG TAU', lat: 10.51, lon: 107.02, zoom: 11 },
+  { name: 'Cảng Đà Nẵng', code: 'DA NANG', lat: 16.08, lon: 108.22, zoom: 11 },
+  { name: 'Cảng Quy Nhơn', code: 'QUY NHON', lat: 13.77, lon: 109.24, zoom: 11 },
+  { name: 'Cảng Singapore', code: 'SINGAPORE', lat: 1.26, lon: 103.84, zoom: 11 },
+  { name: 'Cảng Hồng Kông', code: 'HONG KONG', lat: 22.28, lon: 114.15, zoom: 11 }
+];
+
 function App() {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -41,6 +51,7 @@ function App() {
   const [mapStyle, setMapStyle] = useState('dark');
   const [activeMode, setActiveMode] = useState('flights'); // 'flights' or 'ships'
   const [isNavOpen, setIsNavOpen] = useState(true); // Left vertical navigator toggle
+  const [shipMapCenter, setShipMapCenter] = useState({ lat: 16.0, lon: 108.0, zoom: 6 });
   const [ships, setShips] = useState([]);
   const shipMarkersRef = useRef({});
 
@@ -406,7 +417,8 @@ function App() {
 
       {activeMode === 'ships' && (
         <iframe 
-          src="https://www.vesselfinder.com/aismap?zoom=6&lat=16.0&lon=108.0&width=100%25&height=100%25&names=true&mmsi=0&track=true&fleet=&fleet_only=false&location_button=true&store_position=true&theme=dark"
+          key={`${shipMapCenter.lat}-${shipMapCenter.lon}-${shipMapCenter.zoom}`}
+          src={`https://www.vesselfinder.com/aismap?zoom=${shipMapCenter.zoom}&lat=${shipMapCenter.lat}&lon=${shipMapCenter.lon}&width=100%25&height=100%25&names=true&mmsi=0&track=true&fleet=&fleet_only=false&location_button=true&store_position=true&theme=dark`}
           style={{
             position: 'absolute',
             top: 0,
@@ -655,7 +667,7 @@ function App() {
 
         {/* SEARCH & AIRPORT PRESETS & FLIGHT LIST (ONLY WHEN EXPANDED AND IN FLIGHTS MODE) */}
         {activeMode === 'flights' && isNavOpen && (
-          <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', flex: 1, paddingRight: 2 }}>
             <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -803,68 +815,122 @@ function App() {
                 </div>
               </div>
             </div>
-          </>
+          </div>
+        )}
+
+        {/* SHIP RADAR SIDEBAR CONTENT (ONLY WHEN IN SHIPS MODE AND EXPANDED) */}
+        {activeMode === 'ships' && isNavOpen && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', flex: 1, paddingRight: 2 }}>
+            <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
+
+            {/* SEAPORT PRESETS */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#10b981', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <i className="fa-solid fa-anchor"></i>
+                ĐỊNH VỊ CẢNG BIỂN TRỌNG ĐIỂM
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {SEAPORTS.map(port => (
+                  <button 
+                    key={port.code}
+                    onClick={() => setShipMapCenter({ lat: port.lat, lon: port.lon, zoom: port.zoom })}
+                    style={{
+                      background: shipMapCenter.lat === port.lat && shipMapCenter.lon === port.lon
+                        ? 'rgba(16, 185, 129, 0.25)'
+                        : 'rgba(255,255,255,0.03)',
+                      border: shipMapCenter.lat === port.lat && shipMapCenter.lon === port.lon
+                        ? '1px solid rgba(16, 185, 129, 0.6)'
+                        : '1px solid rgba(255,255,255,0.06)',
+                      borderRadius: 8,
+                      color: shipMapCenter.lat === port.lat && shipMapCenter.lon === port.lon ? '#10b981' : '#d8e3fb',
+                      padding: '5px 9px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      outline: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(16, 185, 129, 0.15)'; }}
+                    onMouseLeave={(e) => { 
+                      if (shipMapCenter.lat !== port.lat || shipMapCenter.lon !== port.lon) {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                      }
+                    }}
+                  >
+                    <i className="fa-solid fa-ship" style={{ fontSize: 9 }}></i>
+                    {port.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
+
+            {/* AIS VESSEL COLOR LEGEND */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#587094', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <i className="fa-solid fa-palette"></i>
+                CHÚ GIẢI PHÂN LOẠI TÀU BIỂN
+              </label>
+              
+              <div style={{
+                background: 'rgba(4,13,26,0.6)',
+                borderRadius: 12,
+                padding: 12,
+                border: '1px solid rgba(255,255,255,0.06)',
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 10
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#d8e3fb' }}>
+                  <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#eab308', boxShadow: '0 0 6px rgba(234, 179, 8, 0.8)' }}></span>
+                  <span>Tàu chở hàng</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#d8e3fb' }}>
+                  <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 6px rgba(16, 185, 129, 0.8)' }}></span>
+                  <span>Tàu chở dầu</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#d8e3fb' }}>
+                  <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#3b82f6', boxShadow: '0 0 6px rgba(59, 130, 246, 0.8)' }}></span>
+                  <span>Tàu du lịch</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#d8e3fb' }}>
+                  <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#f97316', boxShadow: '0 0 6px rgba(249, 115, 22, 0.8)' }}></span>
+                  <span>Tàu kéo/Đặc chủng</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#d8e3fb' }}>
+                  <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#a855f7', boxShadow: '0 0 6px rgba(168, 85, 247, 0.8)' }}></span>
+                  <span>Tàu đánh cá</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#d8e3fb' }}>
+                  <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#94a3b8', boxShadow: '0 0 6px rgba(148, 163, 184, 0.8)' }}></span>
+                  <span>Đang thả neo</span>
+                </div>
+              </div>
+            </div>
+
+            {/* INTERACTIVE VESSEL INFO TIP BOX */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.05))',
+              borderRadius: 12,
+              padding: 12,
+              border: '1px solid rgba(16, 185, 129, 0.2)',
+              marginTop: 'auto'
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#10b981', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <i className="fa-solid fa-circle-info"></i>
+                MẸO XEM THÔNG TIN CHI TIẾT
+              </div>
+              <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.5 }}>
+                Click chuột trực tiếp vào bất kỳ con tàu nào trên bản đồ để mở <b>Card Thông tin Chi tiết</b> (Ảnh chụp thật con tàu, cờ quốc gia, tốc độ hải lý, hải trình & hành trình xuất phát).
+              </div>
+            </div>
+          </div>
         )}
       </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', color: '#587094' }}>
-            TÌM KIẾM CHUYẾN BAY
-          </label>
-          <div style={{ position: 'relative' }}>
-            <input 
-              type="text" 
-              placeholder="Nhập Callsign hoặc Airline..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="input-well"
-              style={{
-                width: '100%',
-                padding: '10px 12px 10px 36px',
-                fontSize: 13,
-                boxSizing: 'border-box'
-              }}
-            />
-            <i className="fa-solid fa-magnifying-glass" style={{
-              position: 'absolute',
-              left: 12,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: '#587094',
-              fontSize: 12
-            }}></i>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#587094', marginTop: 4 }}>
-            SÂN BAY TRỌNG ĐIỂM
-          </label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {AIRPORTS.map(ap => (
-              <button 
-                key={ap.code}
-                onClick={() => handleGoToAirport(ap)}
-                style={{
-                  background: 'rgba(255,255,255,0.03)',
-                  border: '1px solid rgba(255,255,255,0.06)',
-                  borderRadius: 6,
-                  color: '#d8e3fb',
-                  padding: '4px 8px',
-                  fontSize: 10,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  outline: 'none'
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(93, 230, 255, 0.1)'; e.currentTarget.style.borderColor = 'rgba(93, 230, 255, 0.3)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; }}
-              >
-                <i className="fa-solid fa-plane-departure" style={{ marginRight: 4, fontSize: 9 }}></i>
-                {ap.code}
-              </button>
-            ))}
-          </div>
-        </div>
 
       {/* 5. FLIGHT INFO PANEL (RIGHT SIDEBAR) */}
       {selectedFlight && (
