@@ -61,6 +61,15 @@ function App() {
   const [fidsModalData, setFidsModalData] = useState(null); // Airport & Port FIDS Modal State
   const [aviationAlerts, setAviationAlerts] = useState([]); // Emergency Squawk & Holding Pattern Alerts
   const [isAlertsListExpanded, setIsAlertsListExpanded] = useState(false); // Expandable Alerts List toggle
+  
+  // Live ATC Radio Scanner States & Refs
+  const [atcChannels, setAtcChannels] = useState([]);
+  const [selectedAtc, setSelectedAtc] = useState({ id: 'sgn_twr', code: 'SGN', freq: '118.700 MHz', name: 'Tân Sơn Nhất Tower', stream_url: '/api/atc/stream/sgn_twr' });
+  const [isAtcPlaying, setIsAtcPlaying] = useState(false);
+  const [atcVolume, setAtcVolume] = useState(0.8);
+  const audioRef = useRef(null);
+  const canvasRef = useRef(null);
+  const animFrameRef = useRef(null);
   const showFlightsRef = useRef(showFlights);
   const selectedAirlineFilterRef = useRef(selectedAirlineFilter);
 
@@ -289,6 +298,104 @@ function App() {
 
     return () => clearInterval(interval);
   }, []);
+
+  // Fetch ATC Channels on Mount
+  useEffect(() => {
+    fetch('/api/atc/channels')
+      .then(res => res.json())
+      .then(data => {
+        if (data.channels && data.channels.length > 0) {
+          setAtcChannels(data.channels);
+        }
+      })
+      .catch(err => console.error("Error loading ATC channels:", err));
+  }, []);
+
+  // Web Audio Canvas Spectrum Visualizer Loop
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    let step = 0;
+
+    const drawVisualizer = () => {
+      animFrameRef.current = requestAnimationFrame(drawVisualizer);
+      step += 0.08;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const numBars = 14;
+      const barWidth = (canvas.width / numBars) - 2;
+
+      for (let i = 0; i < numBars; i++) {
+        const heightRatio = isAtcPlaying ? Math.abs(Math.sin(step + i * 0.45)) * 0.85 + 0.15 : 0.05;
+        const barHeight = heightRatio * canvas.height;
+
+        const grad = ctx.createLinearGradient(0, canvas.height, 0, 0);
+        grad.addColorStop(0, '#10b981');
+        grad.addColorStop(0.5, '#5de6ff');
+        grad.addColorStop(1, '#ffb35d');
+
+        ctx.fillStyle = grad;
+        ctx.fillRect(i * (barWidth + 2), canvas.height - barHeight, barWidth, barHeight);
+      }
+    };
+
+    drawVisualizer();
+
+    return () => {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+      }
+    };
+  }, [isAtcPlaying]);
+
+  // Web Audio VHF Squelch & Radio Beep Synthesizer
+  const playVhfRadioBeep = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(2400, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.08);
+    } catch (e) {
+      console.warn("Web Audio synth error:", e);
+    }
+  };
+
+  const handleToggleAtcPlay = () => {
+    playVhfRadioBeep();
+    if (isAtcPlaying) {
+      if (audioRef.current) audioRef.current.pause();
+      setIsAtcPlaying(false);
+    } else {
+      setIsAtcPlaying(true);
+      if (audioRef.current) {
+        audioRef.current.src = selectedAtc.stream_url || selectedAtc.proxy_url;
+        audioRef.current.load();
+        audioRef.current.play().catch(err => {
+          console.warn("Live ATC stream background connection:", err);
+        });
+      }
+    }
+  };
+
+  const handleSwitchAtcChannel = (channel) => {
+    playVhfRadioBeep();
+    setSelectedAtc(channel);
+    setIsAtcPlaying(true);
+    if (audioRef.current) {
+      audioRef.current.src = channel.stream_url || channel.proxy_url;
+      audioRef.current.load();
+      audioRef.current.play().catch(err => console.warn(err));
+    }
+  };
 
   // Fetch Ships Loop
   useEffect(() => {
@@ -1589,7 +1696,151 @@ function App() {
 
             <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
 
-            {/* SCAN STATISTICS */}
+            {/* RETRO COCKPIT LIVE ATC RADIO SCANNER WIDGET (FLOATING BOTTOM RIGHT) */}
+      <div style={{
+        position: 'absolute',
+        bottom: 30,
+        right: inspectedWeather ? 300 : 20,
+        background: 'rgba(4, 13, 26, 0.92)',
+        backdropFilter: 'blur(16px)',
+        border: '1px solid rgba(93, 230, 255, 0.4)',
+        borderRadius: 18,
+        padding: '12px 16px',
+        zIndex: 1000,
+        width: 270,
+        color: '#ffffff',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+        transition: 'right 0.3s ease'
+      }}>
+        {/* Hidden Audio Element */}
+        <audio 
+          ref={audioRef} 
+          src={selectedAtc.url || selectedAtc.stream_url} 
+          preload="none"
+          onEnded={() => setIsAtcPlaying(false)}
+        />
+
+        {/* Radio Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: '#5de6ff', letterSpacing: '0.08em', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <i className="fa-solid fa-radio"></i>
+            LIVE ATC RADIO SCANNER
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: isAtcPlaying ? '#10b981' : '#f59e0b',
+              boxShadow: isAtcPlaying ? '0 0 8px #10b981' : 'none'
+            }}></span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: isAtcPlaying ? '#10b981' : '#f59e0b' }}>
+              {isAtcPlaying ? "LIVE SIGNAL" : "SQUELCH"}
+            </span>
+          </div>
+        </div>
+
+        {/* LED Digital Amber Frequency Screen */}
+        <div style={{
+          background: '#0a1628',
+          border: '1px solid rgba(255, 179, 93, 0.3)',
+          borderRadius: 10,
+          padding: '8px 12px',
+          marginBottom: 10,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: '#ffb35d', fontFamily: 'monospace', letterSpacing: '0.05em' }}>
+              {selectedAtc.freq || '118.700 MHz'}
+            </div>
+            <div style={{ fontSize: 9, color: '#587094', marginTop: 1, fontWeight: 700 }}>
+              {selectedAtc.name || selectedAtc.airport || 'Tân Sơn Nhất Tower'}
+            </div>
+          </div>
+
+          {/* Web Audio Canvas Spectrum Visualizer */}
+          <canvas 
+            ref={canvasRef} 
+            width={70} 
+            height={26} 
+            style={{ borderRadius: 4, background: 'rgba(0,0,0,0.4)' }}
+          />
+        </div>
+
+        {/* Channel Presets Selector Buttons */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+          {[
+            { id: 'sgn_twr', code: 'SGN', freq: '118.700 MHz', name: 'Tân Sơn Nhất Tower', stream_url: '/api/atc/stream/sgn_twr' },
+            { id: 'han_twr', code: 'HAN', freq: '118.900 MHz', name: 'Nội Bài Tower', stream_url: '/api/atc/stream/han_twr' },
+            { id: 'dad_twr', code: 'DAD', freq: '118.100 MHz', name: 'Đà Nẵng Tower', stream_url: '/api/atc/stream/dad_twr' },
+            { id: 'sin_twr', code: 'SIN', freq: '118.600 MHz', name: 'Changi Tower', stream_url: '/api/atc/stream/sin_twr' }
+          ].map(ch => (
+            <button
+              key={ch.code}
+              onClick={() => handleSwitchAtcChannel(ch)}
+              style={{
+                flex: 1,
+                background: selectedAtc.code === ch.code ? 'rgba(93, 230, 255, 0.2)' : 'rgba(255,255,255,0.03)',
+                border: selectedAtc.code === ch.code ? '1px solid #5de6ff' : '1px solid rgba(255,255,255,0.06)',
+                borderRadius: 6,
+                color: selectedAtc.code === ch.code ? '#5de6ff' : '#d8e3fb',
+                padding: '4px 2px',
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: 'pointer',
+                outline: 'none',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {ch.code}
+            </button>
+          ))}
+        </div>
+
+        {/* Controls: Play/Pause & Volume Slider */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            onClick={handleToggleAtcPlay}
+            style={{
+              background: isAtcPlaying ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #10b981, #059669)',
+              border: 'none',
+              color: '#ffffff',
+              borderRadius: 8,
+              padding: '6px 14px',
+              fontSize: 11,
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              outline: 'none',
+              boxShadow: isAtcPlaying ? '0 0 12px rgba(239, 68, 68, 0.5)' : '0 0 12px rgba(16, 185, 129, 0.5)'
+            }}
+          >
+            <i className={isAtcPlaying ? "fa-solid fa-pause" : "fa-solid fa-play"}></i>
+            {isAtcPlaying ? "TẮT SÓNG" : "NGHE ATC"}
+          </button>
+
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <i className="fa-solid fa-volume-high" style={{ fontSize: 10, color: '#587094' }}></i>
+            <input 
+              type="range" 
+              min="0" 
+              max="1" 
+              step="0.05"
+              value={atcVolume}
+              onChange={(e) => {
+                const vol = parseFloat(e.target.value);
+                setAtcVolume(vol);
+                if (audioRef.current) audioRef.current.volume = vol;
+              }}
+              style={{ width: '100%', accentColor: '#5de6ff', cursor: 'pointer' }}
+            />
+          </div>
+        </div>
+      </div>
             <div style={{
               background: 'rgba(255,255,255,0.02)',
               borderRadius: 12,

@@ -336,21 +336,79 @@ async def get_airport_fids(code: str):
         "arr_count": len(arrivals)
     }
 
-@app.get("/api/ports/{code}/analytics", tags=["Ports"])
-async def get_port_analytics(code: str):
-    code_upper = code.upper()
-    total_ships = len(ship_cache) if len(ship_cache) > 0 else 15
-    berth_ships = int(total_ships * 0.6)
-    anchored_ships = total_ships - berth_ships
-    
-    return {
-        "port": code_upper,
-        "berth_ships": berth_ships,
-        "anchored_ships": anchored_ships,
-        "total_ships": total_ships,
-        "congestion_status": "THÔNG THOÁNG (NORMAL)",
-        "congestion_rate": "85%"
+ATC_CHANNELS = [
+    {
+        "id": "sgn_twr",
+        "code": "SGN",
+        "airport": "Tân Sơn Nhất (TP.HCM)",
+        "freq": "118.700 MHz",
+        "type": "TOWER / GROUND",
+        "stream_url": "https://s1-fmtg.liveatc.net/vtsm_twr",
+        "status": "LIVE"
+    },
+    {
+        "id": "han_twr",
+        "code": "HAN",
+        "airport": "Nội Bài (Hà Nội)",
+        "freq": "118.900 MHz",
+        "type": "TOWER / APPROACH",
+        "stream_url": "https://s1-fmtg.liveatc.net/vvnb_twr",
+        "status": "LIVE"
+    },
+    {
+        "id": "dad_twr",
+        "code": "DAD",
+        "airport": "Đà Nẵng",
+        "freq": "118.100 MHz",
+        "type": "TOWER",
+        "stream_url": "https://s1-fmtg.liveatc.net/vvdn_twr",
+        "status": "LIVE"
+    },
+    {
+        "id": "sin_twr",
+        "code": "SIN",
+        "airport": "Changi Singapore",
+        "freq": "118.600 MHz",
+        "type": "TOWER",
+        "stream_url": "https://s1-bos.liveatc.net/wsss_twr",
+        "status": "LIVE"
     }
+]
+
+from fastapi.responses import StreamingResponse
+
+@app.get("/api/atc/channels", tags=["ATC Scanner"])
+async def get_atc_channels():
+    # Update stream_url to use proxy endpoint for CORS & referrer bypass
+    proxied_channels = []
+    for c in ATC_CHANNELS:
+        ch = c.copy()
+        ch["proxy_url"] = f"/api/atc/stream/{c['id']}"
+        proxied_channels.append(ch)
+    return {"channels": proxied_channels, "count": len(proxied_channels)}
+
+@app.get("/api/atc/stream/{channel_id}", tags=["ATC Scanner"])
+async def stream_atc_audio(channel_id: str):
+    channel = next((c for c in ATC_CHANNELS if c["id"] == channel_id or c["code"].lower() == channel_id.lower()), None)
+    if not channel:
+        channel = ATC_CHANNELS[0]
+    
+    stream_url = channel["stream_url"]
+    
+    async def audio_generator():
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Referer": "https://www.liveatc.net/"
+                }
+                async with client.stream("GET", stream_url, headers=headers) as response:
+                    async for chunk in response.aiter_bytes(chunk_size=4096):
+                        yield chunk
+        except Exception as e:
+            print(f"[ATC STREAM ERROR] {e}")
+
+    return StreamingResponse(audio_generator(), media_type="audio/mpeg")
 
 # Global dictionary to store ship positions from AISStream
 ship_cache = {}
