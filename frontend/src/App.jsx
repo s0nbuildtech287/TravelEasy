@@ -1358,7 +1358,7 @@ function App() {
             <i className="fa-solid fa-radar fa-spin" style={{ color: activeMode === 'flights' ? '#5de6ff' : '#10b981', fontSize: 22, minWidth: 22 }}></i>
             {isNavOpen && (
               <span style={{ fontSize: 20, fontWeight: 800, fontFamily: 'Outfit, sans-serif', whiteSpace: 'nowrap' }} className="text-gradient">
-                TE Radar System
+                Radar Monitor
               </span>
             )}
           </div>
