@@ -21,8 +21,15 @@ const AIRPORTS = [
   { name: 'Bangkok', code: 'BKK', lat: 13.69, lng: 100.75 },
   { name: 'Kuala Lumpur', code: 'KUL', lat: 2.7456, lng: 101.7099 },
   { name: 'Hong Kong', code: 'HKG', lat: 22.3080, lng: 113.9149 },
-  { name: 'Phnom Penh', code: 'PNH', lat: 11.5466, lng: 104.8442 },
-  { name: 'Vientiane', code: 'VTE', lat: 17.9883, lng: 102.5633 }
+  { name: 'Phnom Penh', code: 'PNH', lat: 11.5466, lng: 104.8442 }
+];
+const AIRLINE_FILTERS = [
+  { id: 'ALL', name: 'Tất cả', flag: '🌏' },
+  { id: 'VN', name: 'Việt Nam', flag: '🇻🇳', keywords: ['vietnam', 'vietjet', 'bamboo', 'pacific', 'hvn', 'vjc', 'bba', 'pic'] },
+  { id: 'TH', name: 'Thái Lan', flag: '🇹🇭', keywords: ['thai', 'fd', 'tha'] },
+  { id: 'SG', name: 'Singapore', flag: '🇸🇬', keywords: ['singapore', 'scoot', 'sia', 'sco'] },
+  { id: 'MY', name: 'Malaysia', flag: '🇲🇾', keywords: ['malaysia', 'airasia', 'mas', 'axm'] },
+  { id: 'CN', name: 'Trung Quốc', flag: '🇨🇳', keywords: ['china', 'cathay', 'air china', 'cca', 'csn', 'ces', 'cpa'] }
 ];
 
 const SEAPORTS = [
@@ -49,6 +56,18 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState('');
   const [mapStyle, setMapStyle] = useState('dark');
+  const [showFlights, setShowFlights] = useState(true); // Toggle flight markers visibility
+  const [selectedAirlineFilter, setSelectedAirlineFilter] = useState('ALL'); // Country / Airline Filter
+  const showFlightsRef = useRef(showFlights);
+  const selectedAirlineFilterRef = useRef(selectedAirlineFilter);
+
+  useEffect(() => {
+    showFlightsRef.current = showFlights;
+  }, [showFlights]);
+
+  useEffect(() => {
+    selectedAirlineFilterRef.current = selectedAirlineFilter;
+  }, [selectedAirlineFilter]);
   const [weatherMode, setWeatherMode] = useState('none'); // 'none', 'rain', 'temp', 'wind'
   const [weatherStatusText, setWeatherStatusText] = useState('');
   const [inspectedWeather, setInspectedWeather] = useState(null); // Real-time point weather inspector
@@ -269,21 +288,48 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // 3. Trigger marker updates immediately when map style or selected flight changes
+  // 3. Trigger marker updates immediately when map style, selected flight, visibility toggle or country filter changes
   useEffect(() => {
     if (flights.length > 0) {
       updateMarkers(flights);
     }
-  }, [mapStyle, selectedFlight]);
+  }, [mapStyle, selectedFlight, showFlights, selectedAirlineFilter]);
 
   // 4. Update Markers on Map
   const updateMarkers = (currentFlights) => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    const currentIcaos = new Set(currentFlights.map(f => f.icao));
+    // If flight visibility is toggled OFF, clear all flight markers & trails immediately
+    if (!showFlightsRef.current) {
+      Object.keys(markersRef.current).forEach(icao => {
+        map.removeLayer(markersRef.current[icao]);
+        delete markersRef.current[icao];
+        if (polylinesRef.current[icao]) {
+          map.removeLayer(polylinesRef.current[icao]);
+          delete polylinesRef.current[icao];
+        }
+        delete trailsRef.current[icao];
+      });
+      return;
+    }
 
-    // Remove old markers for flights that left the bounding box
+    // Filter flights by country/airline selection
+    let activeList = currentFlights;
+    const filterId = selectedAirlineFilterRef.current;
+    if (filterId !== 'ALL') {
+      const activeFilterObj = AIRLINE_FILTERS.find(f => f.id === filterId);
+      if (activeFilterObj && activeFilterObj.keywords.length > 0) {
+        activeList = currentFlights.filter(f => {
+          const text = `${f.airline} ${f.callsign}`.toLowerCase();
+          return activeFilterObj.keywords.some(kw => text.includes(kw));
+        });
+      }
+    }
+
+    const currentIcaos = new Set(activeList.map(f => f.icao));
+
+    // Remove old markers for flights that left the bounding box or filter
     Object.keys(markersRef.current).forEach(icao => {
       if (!currentIcaos.has(icao)) {
         map.removeLayer(markersRef.current[icao]);
@@ -298,7 +344,7 @@ function App() {
     });
 
     // Add or update markers
-    currentFlights.forEach(flight => {
+    activeList.forEach(flight => {
       const { icao, latitude, longitude, heading, callsign, altitude_ft } = flight;
       
       // Update trail coordinates
@@ -485,12 +531,21 @@ function App() {
     }
   };
 
-  // Filter flights by search input
-  const filteredFlights = flights.filter(f => 
-    f.callsign.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    f.airline.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    f.icao.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filter flights by search input & country selection
+  const filteredFlights = flights.filter(f => {
+    const matchesSearch = f.callsign.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      f.airline.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      f.icao.toLowerCase().includes(searchQuery.toLowerCase());
+      
+    if (!matchesSearch) return false;
+    if (selectedAirlineFilter === 'ALL') return true;
+
+    const activeFilterObj = AIRLINE_FILTERS.find(filter => filter.id === selectedAirlineFilter);
+    if (!activeFilterObj || activeFilterObj.keywords.length === 0) return true;
+    
+    const text = `${f.airline} ${f.callsign}`.toLowerCase();
+    return activeFilterObj.keywords.some(kw => text.includes(kw));
+  });
 
   return (
     <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
@@ -993,10 +1048,32 @@ function App() {
               </div>
             </div>
 
+            {/* SEARCH & VISIBILITY TOGGLE & COUNTRY AIRLINE FILTERS */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#587094' }}>
-                TÌM KIẾM CHUYẾN BAY
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#587094' }}>
+                  TÌM KIẾM & BỘ LỌC HÃNG BAY
+                </label>
+                <button 
+                  onClick={() => setShowFlights(!showFlights)}
+                  style={{
+                    background: showFlights ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                    border: showFlights ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                    color: showFlights ? '#10b981' : '#ef4444',
+                    borderRadius: 6,
+                    padding: '2px 6px',
+                    fontSize: 9,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    outline: 'none'
+                  }}
+                  title={showFlights ? "Ẩn tất cả máy bay trên bản đồ" : "Hiện lại tất cả máy bay trên bản đồ"}
+                >
+                  <i className={showFlights ? "fa-solid fa-eye" : "fa-solid fa-eye-slash"} style={{ marginRight: 4 }}></i>
+                  {showFlights ? "Đang Hiện" : "Đã Ẩn"}
+                </button>
+              </div>
+
               <div style={{ position: 'relative' }}>
                 <input 
                   type="text" 
@@ -1019,6 +1096,31 @@ function App() {
                   color: '#587094',
                   fontSize: 11
                 }}></i>
+              </div>
+
+              {/* COUNTRY / AIRLINE FILTER PILLS */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+                {AIRLINE_FILTERS.map(af => (
+                  <button
+                    key={af.id}
+                    onClick={() => setSelectedAirlineFilter(af.id)}
+                    style={{
+                      background: selectedAirlineFilter === af.id ? 'rgba(93, 230, 255, 0.2)' : 'rgba(255,255,255,0.03)',
+                      border: selectedAirlineFilter === af.id ? '1px solid #5de6ff' : '1px solid rgba(255,255,255,0.06)',
+                      borderRadius: 6,
+                      color: selectedAirlineFilter === af.id ? '#5de6ff' : '#d8e3fb',
+                      padding: '3px 7px',
+                      fontSize: 10,
+                      fontWeight: selectedAirlineFilter === af.id ? 700 : 500,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      outline: 'none'
+                    }}
+                  >
+                    <span style={{ marginRight: 3 }}>{af.flag}</span>
+                    {af.name}
+                  </button>
+                ))}
               </div>
             </div>
 
